@@ -14,12 +14,12 @@
         "capabilities": [],
         "actions": []
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/themes/forest-piano.oxide-extension",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/themes/forest-piano.oxide-extension",
       "sha256": "3fffa784b2f406b4ad435fa5804baa1bed9ead9682254546ccf332c2bae12505",
       "download_bytes": 6452658,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/forest-piano.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/forest-piano.png",
         "sha256": "f3e8df1046c03eeed4a477530c5dec114ee582caa0ec4bb28e24b4131b8ce29f",
         "download_bytes": 147517
       }
@@ -35,12 +35,12 @@
         "source": "https://github.com/yksaionara/oxide",
         "kind": "theme"
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/themes/forest.oxide-extension",
-      "sha256": "f576fbcb73f452da4ecddda35f92932cdd3ef7b46959a38837fe3491784d6038",
-      "download_bytes": 1454,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/themes/forest.oxide-extension",
+      "sha256": "d918f40948c77b7efca243569b7210a470ceb18e221517414dd0fc53e83c95cb",
+      "download_bytes": 1449,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/forest.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/forest.png",
         "sha256": "a55d6c1dedee9e9696bd7a634aca41977f20eb428580d32da12a0dc477b543a9",
         "download_bytes": 66398
       }
@@ -56,12 +56,12 @@
         "source": "https://github.com/yksaionara/oxide",
         "kind": "theme"
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/themes/golden.oxide-extension",
-      "sha256": "0018a46e9c5e4d0431ba02a860b3d7deffab9c159c5d52e04928421ccb3be586",
-      "download_bytes": 1794,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/themes/golden.oxide-extension",
+      "sha256": "7eff9c6c67e1a38bdfd43bae5c27264d35c8170f21dcfbcfece725c775f6887d",
+      "download_bytes": 1791,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/golden.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/golden.png",
         "sha256": "1e9df1eaf7fe9906d9088924403f8cf4f4cd71527ce0af97681c600704536a1b",
         "download_bytes": 66164
       }
@@ -77,12 +77,12 @@
         "source": "https://github.com/yksaionara/oxide",
         "kind": "theme"
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/themes/katana.oxide-extension",
-      "sha256": "cf4ef3755d9208e700ee721b66edad3fceb4f26e52d09b82e645bf49070f1a15",
-      "download_bytes": 994,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/themes/katana.oxide-extension",
+      "sha256": "cb6b6b830c7c98d62ae5f262e10ecfd1262475ecce07119d47fe79b7d51b8467",
+      "download_bytes": 991,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/katana.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/katana.png",
         "sha256": "693726039bd2edac1d44bdaa624c7b2bb3cf3e5245b87316a925418902097b06",
         "download_bytes": 66257
       }
@@ -98,12 +98,12 @@
         "source": "https://github.com/yksaionara/oxide",
         "kind": "theme"
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/themes/latte.oxide-extension",
-      "sha256": "a3c3ac481e6d4039a5df26a0e58583add79e638f7a58a6fae309d1beb74a468d",
-      "download_bytes": 1452,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/themes/latte.oxide-extension",
+      "sha256": "461622707d5facfad19927ab6b46baa167cede02e449a3bb17fd3b4654cc7c79",
+      "download_bytes": 1447,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/latte.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/latte.png",
         "sha256": "3c0a7016eb6994d1be6fb27368a06cd717657f4a042db7647255d7cbd6387275",
         "download_bytes": 65904
       }
@@ -119,12 +119,12 @@
         "source": "https://github.com/yksaionara/oxide",
         "kind": "theme"
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/themes/midnight.oxide-extension",
-      "sha256": "f7ffb0acdb7269f1e2fdb235536870cef344f3fac761543174ddc091bb2aebb6",
-      "download_bytes": 1458,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/themes/midnight.oxide-extension",
+      "sha256": "8db3c04872b730829b8e61806c28e1ce158aa06e2b7516c490d50f0e4257850f",
+      "download_bytes": 1453,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/midnight.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/midnight.png",
         "sha256": "81eb4c6bd634cc7e624a7d9714ae2503e8e05260470b7ff0af63daa3e0a98c16",
         "download_bytes": 65740
       }
@@ -140,12 +140,12 @@
         "source": "https://github.com/yksaionara/oxide",
         "kind": "theme"
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/themes/obsidian.oxide-extension",
-      "sha256": "e42cb1ad38f0c495375343bb8e64852ccb98a5a860293cd9ce3a86bbec1f0dd5",
-      "download_bytes": 1838,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/themes/obsidian.oxide-extension",
+      "sha256": "43adb4f42d3868f879f8119648090c0bf08500b5bfc7837417bbf850e571e8d0",
+      "download_bytes": 1835,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/obsidian.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/obsidian.png",
         "sha256": "8860202e554147302139d5664714d65bdf6b94e8729228d4937a25c55f405588",
         "download_bytes": 66162
       }
@@ -161,12 +161,12 @@
         "source": "https://github.com/yksaionara/oxide",
         "kind": "theme"
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/themes/ocean.oxide-extension",
-      "sha256": "7309d84495dc4487ccb3e3355fd704c79dd8f68b14a3441ccc7ea5bda5ef9be8",
-      "download_bytes": 958,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/themes/ocean.oxide-extension",
+      "sha256": "e535694640b69825abcc3b143df10e0152b33fcb8ce6008f83c0656f0492a19d",
+      "download_bytes": 953,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/ocean.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/ocean.png",
         "sha256": "7fd9532d983c52ec9f86a345d23e2c6822597ca29a34833958be816e0bcc1913",
         "download_bytes": 85376
       }
@@ -182,12 +182,12 @@
         "source": "https://github.com/yksaionara/oxide",
         "kind": "theme"
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/themes/rose.oxide-extension",
-      "sha256": "bf8ad0dc259c375fbce786591530f0c2121cf336e63fc39daac11a2fc000087c",
-      "download_bytes": 1450,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/themes/rose.oxide-extension",
+      "sha256": "e0165662eef6080d1441f723b9db7455c08ea81546202ad9a27486f729b4bd8a",
+      "download_bytes": 1445,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/rose.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/rose.png",
         "sha256": "c5b3380a76863535afb52314db03240cf86f481e7805f73ac3cd6789a404980b",
         "download_bytes": 65114
       }
@@ -205,12 +205,12 @@
         "capabilities": [],
         "actions": []
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/themes/soft-white.oxide-extension",
-      "sha256": "e981bf8d1230bf540e531d49eecde1f06769e635b55ba2b4eb376dab668248a0",
-      "download_bytes": 5860518,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/themes/soft-white.oxide-extension",
+      "sha256": "3f130b1b5a0cb7e46d688583de72622eafbf5dc264c12798482ebe3ac4f7e68e",
+      "download_bytes": 5860515,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/soft-white.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/soft-white.png",
         "sha256": "dbe0d64360c5eba021b03122cae6776a9f05585f5335c47580684e7d3ac73e60",
         "download_bytes": 110890
       }
@@ -226,12 +226,12 @@
         "source": "https://github.com/yksaionara/oxide",
         "kind": "theme"
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/themes/teal.oxide-extension",
-      "sha256": "1c794d14b12bb470164e2c220051de7c20b13de8175390595a559f551bb6409a",
-      "download_bytes": 1827,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/themes/teal.oxide-extension",
+      "sha256": "e48df158b16a9a7f573b4d46a3f254b86f7ab798cce92def9eb9d30f11f118a8",
+      "download_bytes": 1824,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/teal.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/teal.png",
         "sha256": "07f686309198ce01ddf28bbc9e1d07b91fac27949e4e4c769c3c88e084b6c36c",
         "download_bytes": 65843
       }
@@ -268,12 +268,12 @@
           }
         ]
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/plugins/packages/api-proxy.oxide-extension",
-      "sha256": "e6ce691505357f3e19d5db33762e8d54da355a35b19fde309edec04fc0a7a85c",
-      "download_bytes": 920979,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/plugins/packages/api-proxy.oxide-extension",
+      "sha256": "7b4f1797a326432973adb4c684ce047519c4dbf0b3ff03947083b8e6532def09",
+      "download_bytes": 917133,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/api-proxy.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/api-proxy.png",
         "sha256": "3764a08ea4cfda49a365bdf79480b61753130c6cf623083ef64410a88ddb64a1",
         "download_bytes": 69881
       }
@@ -325,12 +325,12 @@
           }
         ]
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/plugins/packages/custom-rpc.oxide-extension",
-      "sha256": "f6f70f0f537052910a6e5497bf4d40a6d8d7e5ece3be4d4678a09d872e31b0ac",
-      "download_bytes": 409132,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/plugins/packages/custom-rpc.oxide-extension",
+      "sha256": "fbb26af67d837f4ba3bfe66f7eea464a4844ed5998e2bc367ea3ddb7c1bc8267",
+      "download_bytes": 406612,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/custom-rpc.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/custom-rpc.png",
         "sha256": "32a89d15bce3c35b0d2d176f4a0fc2c30dc1be01bdd0db6a634910fdacb1bac9",
         "download_bytes": 43030
       }
@@ -373,10 +373,10 @@
           }
         ]
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/plugins/packages/external-search-tools.oxide-extension",
-      "sha256": "4cf8ebba8c82731a7478b874fbe54556e03d239a74eae49c4114f1cafdff8e8d",
-      "download_bytes": 1853128,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f"
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/plugins/packages/external-search-tools.oxide-extension",
+      "sha256": "f2b50d6aec44139bb4f65eb8e00aa9301dedba21e92f92639ab8d42947926a42",
+      "download_bytes": 1855426,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425"
     },
     {
       "manifest": {
@@ -399,12 +399,12 @@
           }
         ]
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/plugins/packages/message-delete-protector.oxide-extension",
-      "sha256": "dffd601e3b85b17ae9bacc6deedc526e225c3ee81072ee5e8e64981da03bf6f9",
-      "download_bytes": 338103,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f",
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/plugins/packages/message-delete-protector.oxide-extension",
+      "sha256": "fd0918c0dae2aa185a270767961decfefd4d0208ada14bbbf6284d2ee5b9e626",
+      "download_bytes": 256775,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425",
       "preview": {
-        "url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/previews/message-delete-protector.png",
+        "url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/previews/message-delete-protector.png",
         "sha256": "729063ad60d977fef21d630e07e09677ce07836b1a6bd18d447c3541af5a938c",
         "download_bytes": 65905
       }
@@ -450,10 +450,10 @@
           }
         ]
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/plugins/packages/offline-composer-tools.oxide-extension",
-      "sha256": "4341b10ba13b0c0ac6a358792be121db5af6a936f0a75bcca0e8bf24e507a1cf",
-      "download_bytes": 1157194,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f"
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/plugins/packages/offline-composer-tools.oxide-extension",
+      "sha256": "aa196e8f013dc10a7185f80ae701f99522d4a64bfd31a9221773be80ccaa894a",
+      "download_bytes": 1160814,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425"
     },
     {
       "manifest": {
@@ -517,10 +517,10 @@
           }
         ]
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/plugins/packages/text-commands.oxide-extension",
-      "sha256": "a6d2f111abb5cfdbc4906ca0503c3ab4c8fd5a0bccc2e25cf4cfb1933e5e7abe",
-      "download_bytes": 596352,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f"
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/plugins/packages/text-commands.oxide-extension",
+      "sha256": "513c0b8691428afb3c048f62723a58715f38be6a88e41a096c8c29e3d8f29347",
+      "download_bytes": 601977,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425"
     },
     {
       "manifest": {
@@ -543,10 +543,10 @@
           }
         ]
       },
-      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/3abae434ebd9545fdbed044613653f917a27c19f/extensions/plugins/packages/view-raw-message.oxide-extension",
-      "sha256": "b0c45fcd93f9efb209b0a44df745f15e7ffc46ce1498e69ffe46dd4001fe3349",
-      "download_bytes": 1358624,
-      "source_commit": "3abae434ebd9545fdbed044613653f917a27c19f"
+      "release_url": "https://raw.githubusercontent.com/yksaionara/oxide/976ca9f0ef15101e208aa129b56b8210758b9425/extensions/plugins/packages/view-raw-message.oxide-extension",
+      "sha256": "a5720f38d923d5a777ac6ee3bef8b7d3aacecd7f50e54eb0bdc6c997e21adc6e",
+      "download_bytes": 1361731,
+      "source_commit": "976ca9f0ef15101e208aa129b56b8210758b9425"
     }
   ]
 }
