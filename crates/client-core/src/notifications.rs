@@ -1105,6 +1105,80 @@ impl State {
 		}
 		activity.notifications.push_back(notification);
 	}
+	/// Message Logger: remember a recent message that mentions the owner directly.
+	pub(crate) fn observe_logged_mention(&mut self, message: &Message) {
+		let logger = self.message_logger;
+		if !logger.ghost_pings() || logger.ignores(&message.author) {
+			return;
+		}
+		let Some(owner) = self.user.as_ref() else {
+			return;
+		};
+		if message.author.id == owner.id || !message.mentions.iter().any(|u| u.id == owner.id) {
+			return;
+		}
+		let display = message.display_text();
+		let preview = self.alert_preview(message, &display);
+		let mention = crate::logger::Mention {
+			channel: message.channel,
+			message: message.id,
+			sender: alert_text(self.message_author_name(message), 80, 256),
+			preview: alert_text(&preview, 160, 640),
+			avatar_key: message.author.avatar_key(),
+		};
+		self.logger.remember(mention);
+	}
+	/// Message Logger: a deleted mention becomes a ghost-ping alert and desktop notification.
+	pub(crate) fn observe_logged_deletion(&mut self, channel: Id, message: Id) {
+		let Some(mention) = self.logger.take_deleted(channel, message) else {
+			return;
+		};
+		if !self.message_logger.ghost_pings() {
+			return;
+		}
+		let sender = if mention.sender.is_empty() {
+			"Someone".to_owned()
+		} else {
+			mention.sender
+		};
+		self.logger.report(crate::logger::GhostPing {
+			channel,
+			sender: sender.clone(),
+			preview: mention.preview.clone(),
+		});
+		let notification = Notification {
+			channel,
+			message,
+			sender,
+			preview: if mention.preview.is_empty() {
+				"Ghost ping: mentioned you, then deleted the message".to_owned()
+			} else {
+				format!("Ghost ping (deleted): {}", mention.preview)
+			},
+			avatar_key: mention.avatar_key,
+			direct: true,
+			everyone: false,
+			roles: Vec::new(),
+		};
+		let activity = &mut self.read_state.activity;
+		while activity.notifications.len() >= MAX_NOTIFICATIONS
+			|| activity
+				.notifications
+				.iter()
+				.map(Notification::bytes)
+				.sum::<usize>()
+				+ notification.bytes()
+				+ (MAX_NOTIFICATIONS - activity.notifications.len() - 1) * size_of::<Notification>()
+				> MAX_NOTIFICATION_BYTES
+		{
+			activity.notifications.pop_front();
+		}
+		activity.notifications.push_back(notification);
+	}
+	/// Ghost pings found since the interface last asked; oldest first.
+	pub fn take_ghost_pings(&mut self) -> Vec<crate::logger::GhostPing> {
+		self.logger.ghost_pings.drain(..).collect()
+	}
 }
 
 #[cfg(test)]

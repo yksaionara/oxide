@@ -1282,11 +1282,12 @@ impl Bridge {
 		}
 		state.set_preserve_deleted_messages(
 			account.is_some()
-				&& self.installed.iter().any(|entry| {
-					entry.error.is_none()
-						&& !self.disabled.contains(&entry.manifest.id)
-						&& entry.preserve_deleted_messages
-				}),
+				&& (state.message_logger.enabled
+					|| self.installed.iter().any(|entry| {
+						entry.error.is_none()
+							&& !self.disabled.contains(&entry.manifest.id)
+							&& entry.preserve_deleted_messages
+					})),
 		);
 		let max_texture = ctx.input(|input| input.max_texture_side);
 		if self

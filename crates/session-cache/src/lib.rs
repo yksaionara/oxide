@@ -5,6 +5,23 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const MAX_MESSAGES: usize = 500;
 pub const MAX_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_MUTATIONS: usize = 1024;
+/// Message Logger edit history: earlier versions kept per message and for the whole window.
+pub const MAX_EDITS_PER_MESSAGE: usize = 8;
+pub const MAX_EDITED_MESSAGES: usize = 256;
+pub const MAX_EDIT_BYTES: usize = 512 * 1024;
+
+/// An earlier version of an edited message, kept for this session only.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Edit {
+	pub content: String,
+	/// When this version was written: `None` for the original message.
+	pub edited_at: Option<i128>,
+}
+impl Edit {
+	fn bytes(&self) -> usize {
+		size_of::<Self>() + self.content.capacity()
+	}
+}
 
 fn keep_author_membership(message: &mut Message, roles: &[Id], nick: Option<&str>) {
 	if message.author_roles.is_empty() && !roles.is_empty() {
@@ -32,8 +49,53 @@ pub struct Timeline {
 	older_evicted: bool,
 	replace: bool,
 	preserve_deleted_messages: bool,
+	logger: model::addons::MessageLogger,
+	edits: BTreeMap<Id, Vec<Edit>>,
+	edit_bytes: usize,
 }
 impl Timeline {
+	/// Message Logger choices. Turning edit history off releases every kept version.
+	pub fn set_logger(&mut self, logger: model::addons::MessageLogger) {
+		if self.logger == logger {
+			return;
+		}
+		self.logger = logger;
+		if !logger.edit_history() {
+			self.edits.clear();
+			self.edit_bytes = 0;
+		}
+	}
+	/// Earlier versions of a message, oldest first; empty unless edit history is on.
+	pub fn edit_history(&self, id: Id) -> &[Edit] {
+		self.edits.get(&id).map_or(&[], Vec::as_slice)
+	}
+	/// The version an edit replaces, when edit history should keep it.
+	fn replaced_version(&self, previous: &Message, next_content: &str) -> Option<Edit> {
+		(self.logger.edit_history()
+			&& previous.content != next_content
+			&& !self.logger.ignores(&previous.author))
+		.then(|| Edit {
+			content: previous.content.clone(),
+			edited_at: previous.edited_at,
+		})
+		.filter(|edit| edit.bytes() <= MAX_EDIT_BYTES / 4)
+	}
+	fn record_edit(&mut self, id: Id, edit: Edit) {
+		self.edit_bytes += edit.bytes();
+		let versions = self.edits.entry(id).or_default();
+		versions.push(edit);
+		if versions.len() > MAX_EDITS_PER_MESSAGE {
+			let dropped = versions.remove(0);
+			self.edit_bytes -= dropped.bytes();
+		}
+		// Oldest message IDs give way first.
+		while self.edits.len() > MAX_EDITED_MESSAGES || self.edit_bytes > MAX_EDIT_BYTES {
+			let Some((_, dropped)) = self.edits.pop_first() else {
+				break;
+			};
+			self.edit_bytes -= dropped.iter().map(Edit::bytes).sum::<usize>();
+		}
+	}
 	pub fn iter(&self) -> impl DoubleEndedIterator<Item = &Message> {
 		self.messages
 			.iter()
@@ -235,6 +297,7 @@ impl Timeline {
 		} else if !live && self.changed.contains(&message.id) {
 			return Ok(());
 		}
+		let mut replaced = None;
 		if let Some(previous) = self.get(message.id) {
 			if let (Some(next), Some(old)) = (&mut message.poll, &previous.poll) {
 				next.retain_results(old);
@@ -244,6 +307,9 @@ impl Timeline {
 				.is_some_and(|old| message.edited_at.is_none_or(|new| new < old))
 			{
 				return Ok(());
+			}
+			if live {
+				replaced = self.replaced_version(previous, &message.content);
 			}
 			keep_author_membership(
 				&mut message,
@@ -268,6 +334,9 @@ impl Timeline {
 						|| previous.author_roles != message.author_roles
 						|| previous.author_nick != message.author_nick,
 				);
+		}
+		if let Some(edit) = replaced {
+			self.record_edit(message.id, edit);
 		}
 		self.bytes += message.bytes();
 		match self.messages.insert(message.id, Some(message)) {
@@ -404,6 +473,12 @@ impl Timeline {
 			if let Some(old) = self.patches.remove(&patch.id) {
 				self.patch_bytes -= patch_bytes(&old);
 			}
+			if let Patch::Value(content) = &patch.content
+				&& !matches!(patch.edited, Patch::Value(at) if message.edited_at.is_some_and(|old| at < old))
+				&& let Some(edit) = self.replaced_version(&message, content)
+			{
+				self.record_edit(patch.id, edit);
+			}
 			apply_patch(&mut message, &patch);
 			self.insert(message, true, false)?;
 		} else if self.loading {
@@ -470,7 +545,13 @@ impl Timeline {
 		}
 		self.remember(id)?;
 		self.deleted.insert(id);
-		if !self.preserve_deleted_messages {
+		let ignored = self.logger.enabled
+			&& self
+				.messages
+				.get(&id)
+				.and_then(Option::as_ref)
+				.is_some_and(|message| self.logger.ignores(&message.author));
+		if !self.preserve_deleted_messages || ignored {
 			self.discard_preserved(id);
 		}
 		if let Some(old) = self.patches.remove(&id) {
@@ -479,7 +560,10 @@ impl Timeline {
 		Ok(())
 	}
 	pub fn clear(&mut self) {
-		*self = Self::default();
+		*self = Self {
+			logger: self.logger,
+			..Self::default()
+		};
 	}
 	/// Change the reading range within the same channel without forgetting known
 	/// deletions. Use `clear` when changing channel/session ownership instead.
@@ -488,6 +572,7 @@ impl Timeline {
 		*self = Self {
 			deleted,
 			preserve_deleted_messages: self.preserve_deleted_messages,
+			logger: self.logger,
 			..Self::default()
 		};
 	}
@@ -708,6 +793,42 @@ mod tests {
 			embeds_suppressed: Patch::Absent,
 			attachments: Patch::Absent,
 		}
+	}
+
+	#[test]
+	fn logger_keeps_bounded_edit_history_and_lets_bot_deletions_go() {
+		let mut timeline = Timeline::default();
+		timeline.set_preserve_deleted_messages(true);
+		timeline.set_logger(model::addons::MessageLogger {
+			enabled: true,
+			..Default::default()
+		});
+		let mut row = message(1);
+		row.content = "v0".into();
+		timeline.insert(row, true, false).unwrap();
+		for version in 1..=MAX_EDITS_PER_MESSAGE + 2 {
+			let mut patch = empty_patch(1);
+			patch.content = Patch::Value(format!("v{version}"));
+			timeline.patch(patch).unwrap();
+		}
+		// A content-free update, such as an embed unfurl, is not an edit.
+		timeline.patch(empty_patch(1)).unwrap();
+		let history = timeline.edit_history(Id(1));
+		assert_eq!(history.len(), MAX_EDITS_PER_MESSAGE);
+		assert_eq!(history[0].content, "v2");
+		assert_eq!(
+			history.last().unwrap().content,
+			format!("v{}", MAX_EDITS_PER_MESSAGE + 1)
+		);
+		let mut bot = message(2);
+		bot.author.kind = model::AccountKind::Bot;
+		timeline.insert(bot, true, false).unwrap();
+		timeline.delete(Id(1)).unwrap();
+		timeline.delete(Id(2)).unwrap();
+		assert!(timeline.get_display(Id(1)).is_some());
+		assert!(timeline.get_display(Id(2)).is_none());
+		timeline.set_logger(Default::default());
+		assert!(timeline.edit_history(Id(1)).is_empty());
 	}
 
 	#[test]

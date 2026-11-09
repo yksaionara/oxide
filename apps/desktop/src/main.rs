@@ -18,6 +18,7 @@ mod credentials;
 #[cfg(feature = "demo")]
 mod dm_demo;
 mod downloads;
+mod drover;
 mod emoji_upload;
 mod extension_app;
 mod extension_bridge;
@@ -1007,6 +1008,7 @@ struct Desktop {
 	proxy_auth: proxy_auth::Authentication,
 	api_proxy: tokio::sync::watch::Sender<Option<discord_api::proxy::ApiProxy>>,
 	extensions: extension_bridge::Bridge,
+	drover: drover::Drover,
 	extension_close_pending: bool,
 	login: Option<platform::LoginView>,
 	captcha: captcha::Captcha,
@@ -2359,6 +2361,7 @@ impl Desktop {
 			proxy_auth: proxy_auth::Authentication::default(),
 			api_proxy: tokio::sync::watch::channel(None).0,
 			extensions: extension_bridge::Bridge::default(),
+			drover: drover::Drover::default(),
 			extension_close_pending: false,
 			login: None,
 			captcha: captcha::Captcha::default(),
@@ -5795,6 +5798,7 @@ impl eframe::App for Desktop {
 			self.captcha.close();
 			self.messaging.verification.active = false;
 		}
+		self.state.message_logger = self.messaging.addons.message_logger;
 		self.extensions.tick(
 			&mut self.state,
 			&mut self.messaging,
@@ -5803,6 +5807,18 @@ impl eframe::App for Desktop {
 			&self.window,
 			self.fixture_only,
 		);
+		self.drover.sync(&mut self.messaging);
+		for ping in self.state.take_ghost_pings() {
+			let text = if ping.preview.is_empty() {
+				ui::i18n::translate_args("ghost-ping-toast-empty", &[("sender", &ping.sender)])
+			} else {
+				ui::i18n::translate_args(
+					"ghost-ping-toast",
+					&[("sender", &ping.sender), ("preview", &ping.preview)],
+				)
+			};
+			self.messaging.toasts.push(ui::design::Level::Warning, text);
+		}
 		if self.extensions.api_proxy_ready() {
 			let route = self.proxy_auth.tick(
 				self.extensions.api_proxy(),

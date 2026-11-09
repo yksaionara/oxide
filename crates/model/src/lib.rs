@@ -1,5 +1,6 @@
 //! UI-neutral session entities. No filesystem or network dependencies.
 pub mod account;
+pub mod addons;
 pub mod application_commands;
 mod image_sharing;
 pub mod polls;

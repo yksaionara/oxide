@@ -104,6 +104,8 @@ pub struct AppPreferences {
 	/// First-run setup finished or skipped; absent in older preferences, so existing installs
 	/// see it once too.
 	pub setup_done: bool,
+	/// Built-in Oxide addons; absent in older preferences, which take the defaults.
+	pub addons: model::addons::Addons,
 }
 impl Default for AppPreferences {
 	fn default() -> Self {
@@ -111,8 +113,8 @@ impl Default for AppPreferences {
 			window_geometry: None,
 			language: None,
 			notifications_enabled: true,
-			auto_update: false,
-			update_nightly: true,
+			auto_update: true,
+			update_nightly: false,
 			notification_options: Default::default(),
 			show_hidden_channels: false,
 			hide_nitro_emojis: false,
@@ -149,6 +151,7 @@ impl Default for AppPreferences {
 			plaintext_login: false,
 			diagnostics_log: diagnostics::Level::Off,
 			setup_done: false,
+			addons: Default::default(),
 		}
 	}
 }

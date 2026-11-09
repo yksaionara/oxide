@@ -386,9 +386,7 @@ pub(crate) fn show_subset(
 									)
 								});
 								media_context_menu(&response, attachment, download, opening, demo);
-								let gif = crate::embeds::gif_for_media(
-									&attachment.media,
-									None,
+								let animated =
 									attachment.filename.to_ascii_lowercase().ends_with(".gif")
 										|| attachment.content_type.as_deref().is_some_and(|mime| {
 											mime.split(';')
@@ -396,15 +394,18 @@ pub(crate) fn show_subset(
 												.unwrap_or(mime)
 												.trim()
 												.eq_ignore_ascii_case("image/gif")
-										}),
-								);
+										});
+								// Any picture can be a favorite, like Discord's own client.
+								let gif =
+									crate::embeds::gif_for_media(&attachment.media, None, true);
 								let star = gif.map(|gif| {
 									let favorite = download.gif_favorites.contains(&gif.url);
+									// Only GIFs show the GIF badge before the star drops in.
 									let star = crate::embeds::favorite_star(
 										ui,
 										&response,
 										favorite,
-										images.gifs_playing(ui.ctx()),
+										!animated || images.gifs_playing(ui.ctx()),
 									);
 									if star.clicked() {
 										download.gif_favorite_request = Some(gif);
@@ -549,14 +550,26 @@ pub(super) fn media_context_menu(
 	opening: &mut Option<String>,
 	demo: bool,
 ) {
-	if let Some(copy) = media_menu(
+	let favorite = crate::embeds::gif_for_media(&attachment.media, None, true);
+	let mut toggle_favorite = false;
+	let action = media_menu(
 		response,
 		attachment.is_video(),
 		attachment.media.url.as_deref(),
+		favorite.as_ref().map(|gif| {
+			(
+				download.gif_favorites.contains(&gif.url),
+				&mut toggle_favorite,
+			)
+		}),
 		download,
 		opening,
 		demo,
-	) {
+	);
+	if toggle_favorite {
+		download.gif_favorite_request = favorite;
+	}
+	if let Some(copy) = action {
 		if copy {
 			download.copy_request = Some(attachment.clone());
 		} else {
@@ -570,14 +583,26 @@ pub(crate) fn embed_context_menu(
 	download: &mut DownloadUi,
 	demo: bool,
 ) {
-	if let Some(copy) = media_menu(
+	let favorite = crate::embeds::gif_for_media(media, None, true);
+	let mut toggle_favorite = false;
+	let action = media_menu(
 		response,
 		false,
 		media.url.as_deref().or(media.proxy_url.as_deref()),
+		favorite.as_ref().map(|gif| {
+			(
+				download.gif_favorites.contains(&gif.url),
+				&mut toggle_favorite,
+			)
+		}),
 		download,
 		&mut None,
 		demo,
-	) {
+	);
+	if toggle_favorite {
+		download.gif_favorite_request = favorite;
+	}
+	if let Some(copy) = action {
 		download.embed_request = Some((media.clone(), copy));
 	}
 }
@@ -585,6 +610,8 @@ fn media_menu(
 	response: &egui::Response,
 	video: bool,
 	url: Option<&str>,
+	// Whether it is a favorite now, and where to report the toggle.
+	favorite: Option<(bool, &mut bool)>,
 	download: &DownloadUi,
 	opening: &mut Option<String>,
 	demo: bool,
@@ -605,7 +632,20 @@ fn media_menu(
 			.at_pointer_fixed();
 	}
 	let mut action = None;
+	let mut favorite = favorite;
 	popup.show(|ui| {
+		if let Some((is_favorite, toggle)) = favorite.as_mut() {
+			let label = crate::i18n::translate(if *is_favorite {
+				"attachments-media-menu-remove-favorite"
+			} else {
+				"attachments-media-menu-add-favorite"
+			});
+			if ui.add_enabled(!demo, egui::Button::new(label)).clicked() {
+				**toggle = true;
+				ui.close();
+			}
+			ui.separator();
+		}
 		let idle = !demo && !download.busy();
 		let actions = if video {
 			[

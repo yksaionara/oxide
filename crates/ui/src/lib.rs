@@ -2,6 +2,7 @@
 //! Native egui views; emits commands without owning transports or session credentials.
 mod account_badge;
 mod account_menu;
+mod addons;
 mod archives;
 mod audio;
 mod badges;
@@ -347,6 +348,12 @@ pub struct MessagingUi {
 	pub time_format: model::TimeFormat,
 	/// Saved logins may fall back to plain files when no OS keyring works.
 	pub plaintext_login: bool,
+	/// Built-in addons, restored and persisted by the desktop as device preferences.
+	pub addons: model::addons::Addons,
+	/// Voice unblock lookup result, published by the desktop.
+	pub voice_unblock_status: String,
+	/// Look for Drover files again; the desktop clears it.
+	pub voice_unblock_rescan: bool,
 	/// First-run setup still to show; the desktop restores and persists it.
 	pub setup_pending: bool,
 	setup_step: usize,

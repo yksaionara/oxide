@@ -78,6 +78,8 @@ enum Pending {
 enum Scope {
 	/// Every server channel and direct message.
 	All,
+	/// Every server channel; direct and group messages stay unread.
+	Servers,
 	/// Channels of these servers, sorted and bounded by the folder guild limit.
 	Guilds(Box<[Id]>),
 }
@@ -95,6 +97,7 @@ impl Scope {
 	fn covers(&self, guild: Option<Id>) -> bool {
 		match self {
 			Self::All => true,
+			Self::Servers => guild.is_some(),
 			Self::Guilds(guilds) => guild.is_some_and(|guild| guilds.binary_search(&guild).is_ok()),
 		}
 	}
@@ -587,6 +590,14 @@ impl State {
 	}
 	pub fn can_mark_all_read(&self) -> bool {
 		self.can_bulk_ack(&Scope::All)
+	}
+	/// Any unread server channel; direct messages are not counted.
+	pub fn can_mark_servers_read(&self) -> bool {
+		self.can_bulk_ack(&Scope::Servers)
+	}
+	/// One bulk acknowledgement for every unread server channel, leaving direct messages.
+	pub fn prepare_mark_servers_read(&mut self) -> Option<crate::Command> {
+		self.prepare_bulk_ack(Scope::Servers)
 	}
 	/// Any unread channel in these servers, such as a server folder.
 	pub fn can_mark_guilds_read(&self, guilds: &[Id]) -> bool {
@@ -1264,6 +1275,14 @@ mod navigation_tests {
 			assert!(state.prepare_mark_channel_read(Id(1)).is_none());
 			assert!(state.prepare_mark_channel_read(Id(999)).is_none());
 		}
+	}
+	#[test]
+	fn mark_servers_read_leaves_direct_messages_unread() {
+		let mut state = state(Some(Id(100)));
+		assert!(state.can_mark_all_read());
+		assert!(!state.can_mark_servers_read());
+		assert!(state.prepare_mark_servers_read().is_none());
+		assert!(state.read_state.pending.is_none());
 	}
 	#[test]
 	fn mark_all_read_keeps_confirmed_chunks_when_a_later_one_fails() {

@@ -514,7 +514,7 @@ mod tests {
 		let _capture = capture(source.clone(), false);
 		let pad = source.static_pad("src").unwrap();
 		let format =
-			"video/x-raw,format=BGRA,width=2560,height=1440,framerate=0/1,max-framerate=120/1";
+			"video/x-raw,format=BGRA,width=2560,height=1440,framerate=0/1,max-framerate=240/1";
 		let mut caps = gst::Caps::from_str(format)
 			.unwrap()
 			.intersect_with_mode(&pad.peer_query_caps(None), gst::CapsIntersectMode::First);

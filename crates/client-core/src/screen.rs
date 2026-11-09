@@ -24,7 +24,7 @@ pub struct Source {
 	/// Native pixel size. Zero means the platform has not reported one yet.
 	pub width: u32,
 	pub height: u32,
-	/// Monitor refresh in hertz. Zero means unknown, which hides 90 and 120 fps.
+	/// Monitor refresh in hertz. Zero means unknown, which hides rates above 60 fps.
 	pub refresh_hz: u32,
 }
 
@@ -82,11 +82,16 @@ pub fn offered_resolutions(width: u32, height: u32) -> impl Iterator<Item = Reso
 	source.into_iter().chain(presets)
 }
 
-/// 15, 30, and 60 always. 90 and 120 only when the monitor refreshes at least that fast.
+/// Every frame rate a share can use, lowest first.
+pub const FRAME_RATES: [u32; 7] = [15, 30, 60, 90, 120, 144, 240];
+
+/// 15, 30, and 60 always. Higher rates only when the monitor refreshes at least that fast,
+/// since capture never delivers more frames than the display draws. Monitors a few hertz
+/// short of a step (such as 239.76 Hz panels reported as 239) still offer it.
 pub fn offered_frame_rates(refresh_hz: u32) -> impl Iterator<Item = u32> {
-	[15, 30, 60, 90, 120]
+	FRAME_RATES
 		.into_iter()
-		.filter(move |fps| *fps <= 60 || refresh_hz >= *fps)
+		.filter(move |fps| *fps <= 60 || refresh_hz.saturating_add(2) >= *fps)
 }
 
 /// Output size for a choice. `None` when that choice does not fit the source.
@@ -146,7 +151,7 @@ impl Settings {
 			&& self.height <= MAX_SHARE_HEIGHT
 			&& self.width.is_multiple_of(2)
 			&& self.height.is_multiple_of(2)
-			&& matches!(self.fps, 15 | 30 | 60 | 90 | 120)
+			&& FRAME_RATES.contains(&self.fps)
 	}
 
 	pub fn bit_rate(self) -> u32 {
@@ -163,13 +168,15 @@ impl Settings {
 			let scaled = 8_000_000u64 * pixels / (1920 * 1080);
 			u32::try_from(scaled.min(12_000_000)).unwrap_or(12_000_000)
 		};
-		let scale = match self.fps {
-			120 => 4,
-			90 => 3,
-			60 => 2,
-			_ => 1,
+		let (scale, ceiling) = match self.fps {
+			240 => (6, 30_000_000),
+			144 => (5, 24_000_000),
+			120 => (4, 16_000_000),
+			90 => (3, 16_000_000),
+			60 => (2, 16_000_000),
+			_ => (1, 16_000_000),
 		};
-		base.saturating_mul(scale).min(16_000_000)
+		base.saturating_mul(scale).min(ceiling)
 	}
 }
 

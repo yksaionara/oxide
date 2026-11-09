@@ -197,6 +197,56 @@ pub(super) fn rail_indicator(
 		.rect_filled(pill, 4, design::palette(ui).text_strong);
 }
 /// Mention badge that pops in when `count` first becomes non-zero.
+/// Rail pill under Home that marks every server channel read; direct messages stay unread.
+/// Returns true when clicked while there is something to mark.
+fn read_all_servers(
+	ui: &mut egui::Ui,
+	state: &State,
+	fill: Color32,
+	accent: Color32,
+	text: Color32,
+	muted: Color32,
+) -> bool {
+	let available = state.can_mark_servers_read();
+	let (rect, response) = ui.allocate_exact_size(
+		egui::vec2(RAIL_TILE, 24.0),
+		if available {
+			egui::Sense::click()
+		} else {
+			egui::Sense::hover()
+		},
+	);
+	let hovered = available && (response.hovered() || response.has_focus());
+	let lit = ui.ctx().animate_bool_with_time_and_easing(
+		response.id.with("read-all-hover"),
+		hovered,
+		rail_motion(ui),
+		egui::emath::easing::cubic_out,
+	);
+	ui.painter()
+		.rect_filled(rect, 12, fill.lerp_to_gamma(accent, lit));
+	let ink = if available {
+		text.lerp_to_gamma(Color32::WHITE, lit)
+	} else {
+		muted.gamma_multiply(0.6)
+	};
+	crate::icons::paint(
+		ui.painter(),
+		crate::icons::Icon::Check,
+		egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(16.0)),
+		ink,
+	);
+	let label = crate::i18n::translate("read-all-servers");
+	response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, available, &label));
+	let clicked = response.clicked();
+	response.on_hover_text(format!(
+		"{label}
+{}",
+		crate::i18n::translate("read-all-servers-tooltip")
+	));
+	available && clicked
+}
+
 pub(super) fn rail_badge(ui: &egui::Ui, id: egui::Id, rect: egui::Rect, count: u32, ring: Color32) {
 	if !ui.is_rect_visible(rect) {
 		return;
@@ -334,6 +384,17 @@ impl MessagingUi {
 						commands.push(command);
 					}
 					self.search.open = false;
+				}
+				if read_all_servers(
+					ui,
+					state,
+					colors.raised,
+					colors.accent,
+					colors.text,
+					colors.muted,
+				) && let Some(command) = state.prepare_mark_servers_read()
+				{
+					commands.push(command);
 				}
 				self.scroll
 					.attach(

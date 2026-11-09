@@ -20,6 +20,7 @@ mod permissions_tests;
 mod forwarding;
 pub mod interactions;
 pub mod invites;
+pub mod logger;
 pub mod member_search;
 pub mod message_actions;
 pub mod messaging_permissions;
@@ -55,6 +56,7 @@ pub mod verification;
 mod view_revisions;
 pub mod voice;
 use model::*;
+pub use session_cache::Edit;
 use session_cache::Timeline;
 use std::collections::{BTreeMap, BTreeSet};
 use trail::Place;
@@ -858,6 +860,9 @@ pub struct State {
 	pub thread_info: BTreeMap<Id, model::threads::Info>,
 	pub timeline: Timeline,
 	pub preserve_deleted_messages: bool,
+	/// Built-in Message Logger choices; the desktop copies the device preference each frame.
+	pub message_logger: model::addons::MessageLogger,
+	pub logger: logger::Logger,
 	pub resident: resident::Windows,
 	pub preload: preload::Preload,
 	pub freshness: Freshness,
@@ -1082,6 +1087,8 @@ impl Default for State {
 			thread_info: BTreeMap::new(),
 			timeline: Timeline::default(),
 			preserve_deleted_messages: false,
+			message_logger: Default::default(),
+			logger: Default::default(),
 			resident: resident::Windows::default(),
 			preload: Default::default(),
 			freshness: Freshness::Stale,
@@ -2813,6 +2820,7 @@ impl State {
 		}
 		self.timeline
 			.set_preserve_deleted_messages(self.preserve_deleted_messages);
+		self.timeline.set_logger(self.message_logger);
 		self.invalidate_resident_event(&envelope.event);
 		self.observe_channel_action(&envelope.event);
 		if let Event::ChannelCreated(channel) = &envelope.event {
@@ -3823,6 +3831,7 @@ impl State {
 					Ok(())
 				};
 				self.observe_notification(&m);
+				self.observe_logged_mention(&m);
 				self.observe_last_message(m.channel, m.id);
 				if self.selected == Some(m.channel)
 					&& self.reactions.invalidated(m.id)
@@ -3881,6 +3890,7 @@ impl State {
 				}
 			}
 			Event::Delete { channel, id } => {
+				self.observe_logged_deletion(channel, id);
 				self.parked_replies.forget_targets(channel, &[id]);
 				self.read_state.activity.delete(channel, id);
 				self.forget_pending_replies(channel, &[id]);
@@ -3924,6 +3934,11 @@ impl State {
 				Ok(())
 			}
 			Event::DeleteBulk { channel, ids } => {
+				if ids.len() <= 100 {
+					for id in &ids {
+						self.observe_logged_deletion(channel, *id);
+					}
+				}
 				self.parked_replies.forget_targets(channel, &ids);
 				self.thread_previews.forget(channel, &ids);
 				if ids.len() <= 100 {

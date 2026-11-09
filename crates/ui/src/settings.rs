@@ -36,10 +36,12 @@ enum Page {
 	Updates,
 	Extensions,
 	Themes,
+	/// Features built into Oxide, starting with the Message Logger.
+	Addons,
 }
 impl Page {
 	/// Every page in sidebar order; the narrow-window page picker lists them the same way.
-	const ALL: [Self; 15] = [
+	const ALL: [Self; 16] = [
 		Self::Account,
 		Self::Profile,
 		Self::MessagingPermissions,
@@ -53,6 +55,7 @@ impl Page {
 		Self::LanguageTime,
 		Self::General,
 		Self::Updates,
+		Self::Addons,
 		Self::Themes,
 		Self::Extensions,
 	];
@@ -82,7 +85,10 @@ impl Page {
 				Self::Updates,
 			],
 		),
-		("section-customization", &[Self::Themes, Self::Extensions]),
+		(
+			"section-customization",
+			&[Self::Addons, Self::Themes, Self::Extensions],
+		),
 	];
 	fn label_key(self) -> &'static str {
 		match self {
@@ -101,6 +107,7 @@ impl Page {
 			Self::Updates => "page-updates",
 			Self::Extensions => "page-extensions",
 			Self::Themes => "page-themes",
+			Self::Addons => "page-addons",
 		}
 	}
 	fn label(self, language: Language) -> String {
@@ -123,6 +130,7 @@ impl Page {
 			Self::Updates => "description-updates",
 			Self::Extensions => "description-extensions",
 			Self::Themes => "description-themes",
+			Self::Addons => "description-addons",
 		}
 	}
 	fn description(self, language: Language) -> String {
@@ -165,6 +173,9 @@ impl Page {
 			}
 			Self::Extensions => "extensions plugins shop store catalog import community tools",
 			Self::Themes => "themes shop store catalog import community appearance colors",
+			Self::Addons => {
+				"addons add-ons message logger deleted edited edit history ghost ping bots drover voice unblock blocked calls uae vpn"
+			}
 		};
 		keywords.contains(query)
 			|| self.label(language).to_lowercase().contains(query)
@@ -489,6 +500,7 @@ impl MessagingUi {
 									),
 									Page::Storage => self.storage_page(ui, state),
 									Page::Updates => self.update_settings(ui, state.demo),
+									Page::Addons => self.addons_page(ui),
 									Page::Keybinds => crate::keybinds::show(
 										ui,
 										&mut self.keybinds,

@@ -87,6 +87,7 @@ impl Settings {
 			plaintext_login: ui.plaintext_login,
 			diagnostics_log: ui.diagnostics_log,
 			setup_done: !ui.setup_pending,
+			addons: ui.addons,
 		};
 		if value != self.current {
 			self.state.touched = true;
@@ -141,6 +142,7 @@ impl Settings {
 		ui.time_format = value.time_format;
 		ui.plaintext_login = value.plaintext_login;
 		ui.diagnostics_log = value.diagnostics_log;
+		ui.addons = value.addons;
 		// Unreadable preferences fall back to defaults; never nag with setup on every launch.
 		ui.setup_pending = self.loaded && !value.setup_done;
 		ui::local_time::set_format(ui.time_format, ui.language);
@@ -507,6 +509,8 @@ mod tests {
 		ui.preload_on_hover = defaults.preload_on_hover;
 		ui.auto_idle = defaults.auto_idle;
 		ui.custom_title_bar = defaults.custom_title_bar;
+		ui.updates.auto_update = defaults.auto_update;
+		ui.updates.nightly = defaults.update_nightly;
 		ui.setup_pending = !defaults.setup_done;
 		settings.observe(&ui);
 		assert!(

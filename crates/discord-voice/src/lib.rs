@@ -16,6 +16,7 @@ mod teardown;
 mod timer;
 mod transport;
 mod transport_feedback;
+pub mod unblock;
 mod video;
 mod video_av1;
 mod video_codec;

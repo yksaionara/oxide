@@ -1689,6 +1689,27 @@ enum DeletedLocalAction {
 	Remove,
 }
 
+/// Message Logger: earlier versions of an edited message, oldest first.
+fn edit_history_tooltip(ui: &mut egui::Ui, history: &[client_core::Edit], muted: egui::Color32) {
+	ui.set_max_width(380.0);
+	ui.label(RichText::new(crate::i18n::translate("timeline-edit-history-title")).strong());
+	for (index, edit) in history.iter().enumerate() {
+		ui.add_space(4.0);
+		let heading = if index == 0 && edit.edited_at.is_none() {
+			crate::i18n::translate("timeline-edit-history-original")
+		} else {
+			format!("#{}", index + 1)
+		};
+		ui.label(RichText::new(heading).small().color(muted));
+		let text: String = edit.content.chars().take(2000).collect();
+		ui.label(if text.trim().is_empty() {
+			RichText::new("—").color(muted)
+		} else {
+			RichText::new(text)
+		});
+	}
+}
+
 fn deleted_message_actions(popup: egui::Popup<'_>, action: &mut Option<DeletedLocalAction>) {
 	popup.show(|ui| {
 		ui.set_min_width(160.0);
@@ -3942,13 +3963,27 @@ impl TimelineView {
 												ui.ctx().request_repaint();
 											}
 											if message.edited {
-												ui.label(
-													RichText::new(crate::i18n::translate(
-														"timeline-show-with-scroll-edited",
-													))
-													.small()
-													.color(colors.muted),
-												);
+												let history =
+													state.timeline.edit_history(message.id);
+												let marker = RichText::new(crate::i18n::translate(
+													"timeline-show-with-scroll-edited",
+												))
+												.small()
+												.color(if history.is_empty() {
+													colors.muted
+												} else {
+													colors.link
+												});
+												let edited = ui.label(marker);
+												if !history.is_empty() {
+													edited.on_hover_ui(|ui| {
+														edit_history_tooltip(
+															ui,
+															history,
+															colors.muted,
+														);
+													});
+												}
 											}
 											if !message.components.is_empty() {
 												let shown = ui.scope(|ui| {
