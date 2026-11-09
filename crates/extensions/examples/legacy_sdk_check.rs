@@ -4,9 +4,9 @@ use serde_json::json;
 
 fn main() {
 	let bytes = include_bytes!("../tests/fixtures/sdk-legacy/app-toolbox.oxide-extension");
-	assert_eq!(bytes.len(), 574_992);
+	assert_eq!(bytes.len(), 574_980);
 	let package = parse_package(bytes).expect("immutable legacy package validates");
-	assert_eq!(package.wasm.len(), 198_370);
+	assert_eq!(package.wasm.len(), 198_368);
 	let mut input: Invocation = serde_json::from_value(json!({
         "action": "show",
         "app": {
