@@ -1,2 +1,4 @@
 # Release packages are hash-addressed artifacts; never rewrite their line endings.
 *.oxide-extension -text
+# Embedded byte-for-byte into Wasm packages; keep LF on every platform.
+extensions/licenses/** text eol=lf
