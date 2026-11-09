@@ -1253,7 +1253,7 @@ fn app_action_patches_reject_invalid_ranges_conflicts_and_unbounded_text() {
 		r#"{"type":"set_audio_settings","settings":{"sensitivity_db":-40,"open_microphone":true}}"#,
 		r#"{"type":"set_audio_settings","settings":{"input_profile":"unknown"}}"#,
 		r#"{"type":"set_stream_audio"}"#,
-		r#"{"type":"set_participant_audio","user_id":"4","volume_percent":201}"#,
+		r#"{"type":"set_participant_audio","user_id":"4","volume_percent":501}"#,
 		r#"{"type":"add_friend","username":"invalid..name"}"#,
 		r#"{"type":"set_channel_mute","channel_id":"2","duration_seconds":60}"#,
 		r#"{"type":"set_channel_notifications","channel_id":"2","level":4}"#,

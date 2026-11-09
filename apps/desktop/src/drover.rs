@@ -1,6 +1,8 @@
-//! Voice unblock addon: finds an existing Drover setup and applies its voice behavior natively.
-//! Nothing is injected into Discord or Oxide. Lookup runs on a background thread, only when the
-//! addon is enabled, and reads at most two small files.
+//! Drover voice unblock, always on. Finds a `drover-packet.bin` on this computer, the way a
+//! Drover install keeps one beside Discord, and hands its path to the voice engine, which
+//! reads it fresh for every call like Drover. Without one, the packet bundled with Oxide is
+//! used. Nothing is injected into Discord or Oxide. The lookup runs on a background thread
+//! after startup and reads at most two small files.
 use std::{
 	path::{Path, PathBuf},
 	sync::{Arc, Mutex},
@@ -12,46 +14,31 @@ const MAX_OPTIONS: u64 = 16 * 1024;
 
 #[derive(Default)]
 pub struct Drover {
-	applied: Option<bool>,
+	started: bool,
 	status: Arc<Mutex<Option<String>>>,
 }
 
 impl Drover {
-	/// Applies the addon when it is turned on or off and publishes the lookup result.
+	/// Looks for Drover's files once at startup and again when asked; publishes the result.
 	pub fn sync(&mut self, messaging: &mut ui::MessagingUi) {
-		let enabled = messaging.addons.voice_unblock;
-		if self.applied != Some(enabled) || messaging.voice_unblock_rescan {
+		if !self.started || messaging.voice_unblock_rescan {
 			messaging.voice_unblock_rescan = false;
-			self.applied = Some(enabled);
-			if enabled {
-				let status = self.status.clone();
-				if let Ok(mut status) = status.lock() {
-					*status = Some("Looking for Drover…".into());
-				}
-				let spawned = std::thread::Builder::new()
-					.name("oxide-voice-unblock".into())
-					.spawn(move || {
-						let found = find();
-						discord_voice::unblock::set(Some(discord_voice::unblock::VoiceUnblock {
-							packet: found
-								.packet
-								.as_ref()
-								.map(|(_, bytes)| Arc::from(&bytes[..])),
-						}));
-						if let Ok(mut status) = status.lock() {
-							*status = Some(found.describe());
-						}
-					});
-				if spawned.is_err() {
-					discord_voice::unblock::set(Some(Default::default()));
-					messaging.voice_unblock_status = "On. Decoy packets only.".into();
-				}
-			} else {
-				discord_voice::unblock::set(None);
-				messaging.voice_unblock_status = "Off".into();
-				if let Ok(mut status) = self.status.lock() {
-					*status = None;
-				}
+			self.started = true;
+			messaging.voice_unblock_status = "Active. Looking for drover-packet.bin…".into();
+			let status = self.status.clone();
+			let spawned = std::thread::Builder::new()
+				.name("oxide-voice-unblock".into())
+				.spawn(move || {
+					let found = find();
+					discord_voice::unblock::set_local_packet(
+						found.packet.as_ref().map(|(path, _)| path.clone()),
+					);
+					if let Ok(mut status) = status.lock() {
+						*status = Some(found.describe());
+					}
+				});
+			if spawned.is_err() {
+				messaging.voice_unblock_status = Found::default().describe();
 			}
 		}
 		if let Ok(mut status) = self.status.try_lock()
@@ -71,18 +58,21 @@ impl Found {
 	fn describe(&self) -> String {
 		let mut text = match &self.packet {
 			Some((path, bytes)) => format!(
-				"On. Using Drover's packet ({} bytes) from {}.",
+				"Active. Using drover-packet.bin ({} bytes) from {}.",
 				bytes.len(),
 				path.parent().and_then(Path::file_name).map_or_else(
 					|| path.display().to_string(),
 					|name| name.to_string_lossy().into_owned()
 				)
 			),
-			None => "On. No drover-packet.bin found; sending decoy packets only.".into(),
+			None => format!(
+				"Active. Using Oxide's built-in Drover packet ({} bytes).",
+				discord_voice::unblock::BUNDLED_PACKET.len()
+			),
 		};
 		if let Some(proxy) = &self.proxy {
 			text.push_str(&format!(
-				" Drover's proxy setting ({proxy}) is not used: Oxide connects directly."
+				" Drover's proxy setting ({proxy}) is not used: Oxide connects directly, like Drover's direct mode."
 			));
 		}
 		text

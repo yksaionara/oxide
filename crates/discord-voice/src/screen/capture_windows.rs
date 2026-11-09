@@ -33,19 +33,40 @@ fn window_id(window: &Window) -> u64 {
 	u64::try_from(window.as_raw_hwnd() as usize).unwrap_or(0)
 }
 
+/// "Main Monitor" for the primary display, then "Secondary Monitor", "Third Monitor", …
+fn monitor_name(position: usize) -> String {
+	const NAMES: [&str; 8] = [
+		"Main Monitor",
+		"Secondary Monitor",
+		"Third Monitor",
+		"Fourth Monitor",
+		"Fifth Monitor",
+		"Sixth Monitor",
+		"Seventh Monitor",
+		"Eighth Monitor",
+	];
+	NAMES.get(position).map_or_else(
+		|| format!("Monitor {}", position + 1),
+		|name| (*name).to_owned(),
+	)
+}
+
 pub(crate) fn sources() -> Result<Vec<Source>, &'static str> {
 	let mut sources = Vec::with_capacity(MAX_SOURCES);
-	for monitor in Monitor::enumerate().map_err(|_| "Displays could not be enumerated")? {
+	let primary = Monitor::primary().ok().map(|monitor| monitor_id(&monitor));
+	let mut monitors = Monitor::enumerate().map_err(|_| "Displays could not be enumerated")?;
+	// The primary display comes first so it is always the Main Monitor.
+	monitors.sort_by_key(|monitor| Some(monitor_id(monitor)) != primary);
+	let mut position = 0;
+	for monitor in monitors {
 		let (Ok(width), Ok(height)) = (monitor.width(), monitor.height()) else {
 			continue;
 		};
 		if width == 0 || height == 0 || width > MAX_SOURCE_WIDTH || height > MAX_SOURCE_HEIGHT {
 			continue;
 		}
-		let name = monitor
-			.name()
-			.or_else(|_| monitor.device_string())
-			.unwrap_or_else(|_| "Display".to_owned());
+		let name = monitor_name(position);
+		position += 1;
 		sources.push(Source {
 			id: SourceId::Display(monitor_id(&monitor)),
 			name: bounded_name(name),

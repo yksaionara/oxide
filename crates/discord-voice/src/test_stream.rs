@@ -45,13 +45,13 @@ async fn connect(
 	let udp = UdpSocket::bind("127.0.0.1:0").await.unwrap();
 	event(&mut ws, json!({"op":8,"d":{"heartbeat_interval":5000}})).await;
 	event(&mut ws, json!({"op":2,"d":{"ssrc":40+user,"ip":"127.0.0.1","port":udp.local_addr().unwrap().port(),"modes":[MODE],"streams":[{"ssrc":50+user}]}})).await;
-	let mut probe = [0; 74];
-	let (length, client) = udp.recv_from(&mut probe).await.unwrap();
+	let mut probe = [0; 4096];
+	let (length, client) = crate::unblock::expect_decoys_then_discovery(&udp, &mut probe).await;
 	assert_eq!(length, 74);
 	probe[..4].copy_from_slice(&[0, 2, 0, 70]);
 	probe[8..17].copy_from_slice(b"127.0.0.1");
-	probe[72..].copy_from_slice(&client.port().to_be_bytes());
-	udp.send_to(&probe, client).await.unwrap();
+	probe[72..74].copy_from_slice(&client.port().to_be_bytes());
+	udp.send_to(&probe[..74], client).await.unwrap();
 	let selected = message(&mut ws).await;
 	let selected: Value = serde_json::from_str(selected.to_text().unwrap()).unwrap();
 	assert_eq!(selected["op"], 1);

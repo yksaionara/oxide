@@ -3,6 +3,14 @@ use crate::{MessagingUi, design};
 
 impl MessagingUi {
 	pub(super) fn addons_page(&mut self, ui: &mut egui::Ui) {
+		design::group(ui, "addons-game-activity", |ui| {
+			design::switch(
+				ui,
+				"addons-game-activity",
+				Some("addons-game-activity-description"),
+				&mut self.share_game_activity,
+			);
+		});
 		design::group(ui, "addons-message-logger", |ui| {
 			let logger = &mut self.addons.message_logger;
 			design::switch(
@@ -33,33 +41,30 @@ impl MessagingUi {
 				);
 			});
 		});
+	}
+}
+
+impl MessagingUi {
+	/// Drover voice unblock is always on; this card only reports which packet it uses.
+	pub(super) fn voice_unblock_card(&mut self, ui: &mut egui::Ui) {
 		design::group(ui, "addons-voice-unblock", |ui| {
-			design::switch(
+			design::row(
 				ui,
-				"addons-voice-unblock",
-				Some("addons-voice-unblock-description"),
-				&mut self.addons.voice_unblock,
+				"addons-voice-unblock-status",
+				Some(&self.voice_unblock_status.clone()),
+				|ui| {
+					if design::button(
+						ui,
+						&crate::i18n::translate("addons-voice-unblock-rescan"),
+						design::ButtonKind::Outline,
+					)
+					.clicked()
+					{
+						self.voice_unblock_rescan = true;
+					}
+				},
 			);
-			if self.addons.voice_unblock {
-				design::card_divider(ui);
-				design::row(
-					ui,
-					"addons-voice-unblock-status",
-					Some(&self.voice_unblock_status.clone()),
-					|ui| {
-						if design::button(
-							ui,
-							&crate::i18n::translate("addons-voice-unblock-rescan"),
-							design::ButtonKind::Outline,
-						)
-						.clicked()
-						{
-							self.voice_unblock_rescan = true;
-						}
-					},
-				);
-				design::hint(ui, &crate::i18n::translate("addons-voice-unblock-hint"));
-			}
+			design::hint(ui, &crate::i18n::translate("addons-voice-unblock-hint"));
 		});
 	}
 }

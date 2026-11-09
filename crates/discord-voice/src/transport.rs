@@ -2832,7 +2832,7 @@ mod tests {
 				break;
 			}
 			let mut probe = [0; 4096];
-			let (n, client) = udp.recv_from(&mut probe).await.unwrap();
+			let (n, client) = crate::unblock::expect_decoys_then_discovery(&udp, &mut probe).await;
 			assert_eq!(n, 74);
 			probe[..4].copy_from_slice(&[0, 2, 0, 70]);
 			probe[8..17].copy_from_slice(b"127.0.0.1");
@@ -3255,7 +3255,7 @@ mod tests {
 				break;
 			}
 			let mut probe = [0; 4096];
-			let (n, client) = udp.recv_from(&mut probe).await.unwrap();
+			let (n, client) = crate::unblock::expect_decoys_then_discovery(&udp, &mut probe).await;
 			assert_eq!(n, 74);
 			probe[..4].copy_from_slice(&[0, 2, 0, 70]);
 			probe[8..17].copy_from_slice(b"127.0.0.1");
