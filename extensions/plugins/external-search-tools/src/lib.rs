@@ -11,10 +11,10 @@
  * the terms of the GNU General Public License version 3 or (at your option) any
  * later version. See https://www.gnu.org/licenses/gpl-3.0.html.
  */
-use serde::{Deserialize, Serialize};
 use oxide_extension_sdk::{
 	AppAction, AppOutput, Element, HostEffect, MessageActionInvocation, Output,
 };
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 /// The selected message text and search query are capped before URL construction.

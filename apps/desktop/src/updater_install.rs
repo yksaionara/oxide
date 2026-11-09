@@ -148,10 +148,7 @@ fn installation() -> Result<PathBuf, String> {
 			);
 		}
 		let appdir = PathBuf::from(std::env::var_os("APPDIR").ok_or("Missing AppImage mount.")?);
-		if fs::canonicalize(appdir.join("usr/bin/oxide"))
-			.ok()
-			.as_ref() != Some(&exe)
-		{
+		if fs::canonicalize(appdir.join("usr/bin/oxide")).ok().as_ref() != Some(&exe) {
 			return Err("Run Oxide from its AppImage to install updates.".into());
 		}
 		let image = PathBuf::from(std::env::var_os("APPIMAGE").ok_or("Missing AppImage path.")?);
@@ -704,10 +701,7 @@ pub(super) fn unpack(
 		}
 	}
 	if cfg!(target_os = "macos") {
-		if !destination
-			.join("Oxide.app/Contents/MacOS/oxide")
-			.is_file()
-		{
+		if !destination.join("Oxide.app/Contents/MacOS/oxide").is_file() {
 			return Err("The update does not contain Oxide.app.".into());
 		}
 		verify_mac(&destination.join("Oxide.app"), installed)?;

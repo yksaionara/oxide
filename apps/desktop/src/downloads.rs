@@ -1334,10 +1334,8 @@ mod tests {
 	/// Verify chunked transfer fallback to metadata size, zero-length rejection, and `MAX_BYTES` enforcement.
 	#[tokio::test]
 	async fn attachment_download_validates_content_length_bounds_and_fallback() {
-		let root = std::env::temp_dir().join(format!(
-			"oxide-download-test-bounds-{}",
-			std::process::id()
-		));
+		let root =
+			std::env::temp_dir().join(format!("oxide-download-test-bounds-{}", std::process::id()));
 		fs::create_dir_all(&root).unwrap();
 		let destination = root.join("bounds.bin");
 		let client = reqwest::Client::builder()

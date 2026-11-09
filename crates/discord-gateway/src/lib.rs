@@ -1256,8 +1256,7 @@ async fn run_recoverable(
 	);
 	let mut gateway_diagnostics = Diagnostics::new(
 		"gateway",
-		std::env::var_os("OXIDE_GATEWAY_DIAGNOSTICS").as_deref()
-			== Some(std::ffi::OsStr::new("1")),
+		std::env::var_os("OXIDE_GATEWAY_DIAGNOSTICS").as_deref() == Some(std::ffi::OsStr::new("1")),
 	);
 	let mut state = ResumeState::default();
 	let mut was_ready = false;

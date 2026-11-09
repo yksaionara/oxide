@@ -260,8 +260,7 @@ mod linux {
 		fn a_released_claim_stops_taking_launches_but_keeps_a_newer_socket() {
 			let mut random = [0_u8; 8];
 			getrandom::fill(&mut random).unwrap();
-			let root =
-				std::env::temp_dir().join(format!("oxide-{:x}", u64::from_le_bytes(random)));
+			let root = std::env::temp_dir().join(format!("oxide-{:x}", u64::from_le_bytes(random)));
 			std::fs::create_dir(&root).unwrap();
 			let path = root.join("instance.sock");
 			// A process stuck in shutdown keeps its listener open without accepting; the
