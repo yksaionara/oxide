@@ -1,0 +1,41 @@
+{
+  "app-id": "io.github.yksaionara.oxide",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "51",
+  "sdk": "org.gnome.Sdk",
+  "command": "oxide",
+  "rename-icon": "oxide",
+  "finish-args": [
+    "--share=network",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=x11",
+    "--device=dri",
+    "--socket=pulseaudio",
+    "--talk-name=org.freedesktop.secrets",
+    "--talk-name=org.kde.kwalletd6",
+    "--talk-name=org.kde.kwalletd5",
+    "--talk-name=org.freedesktop.Notifications",
+    "--talk-name=org.kde.StatusNotifierWatcher",
+    "--talk-name=org.kde.KWin",
+    "--env=WEBKIT_DISABLE_DMABUF_RENDERER=1"
+  ],
+  "modules": [
+    {
+      "name": "oxide",
+      "buildsystem": "simple",
+      "build-options": {
+        "append-path": "/run/build/oxide/flatpak-rust/bin",
+        "env": {"CARGO_NET_OFFLINE": "true", "CARGO_HOME": "/run/build/oxide/flatpak-cargo-home"}
+      },
+      "build-commands": [
+        "test \"$(rustc --version | cut -d ' ' -f 2)\" = 1.99.1",
+        "cargo xtask package --format dir",
+        "cp -a dist/linux-root/usr/. /app/",
+        "rm -f /app/share/icons/hicolor/1024x1024/apps/oxide.png",
+        "install -Dm644 packaging/flatpak/io.github.yksaionara.oxide.metainfo.xml /app/share/metainfo/io.github.yksaionara.oxide.metainfo.xml"
+      ],
+      "sources": [{"type": "dir", "path": "source"}]
+    }
+  ]
+}

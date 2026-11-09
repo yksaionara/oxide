@@ -1,0 +1,11 @@
+use oxide_extension_sdk::{Invocation, Output};
+
+// The host retains bounded session memory; this plugin receives no message bodies.
+fn activate(input: Invocation) -> Output {
+	Output {
+		preserve_deleted_messages: input.action == "activate",
+		..Default::default()
+	}
+}
+
+oxide_extension_sdk::export!(activate);

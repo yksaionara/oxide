@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.yksaionara.oxide</id>
+  <name>Oxide</name>
+  <summary>Experimental unofficial native Discord client</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <description>
+    <p>Oxide is an experimental native client for existing Discord accounts, built with Rust and egui. It includes messaging and voice without a web-based application shell.</p>
+    <p>This client is unofficial and is not affiliated with Discord.</p>
+  </description>
+  <launchable type="desktop-id">io.github.yksaionara.oxide.desktop</launchable>
+  <url type="homepage">https://github.com/yksaionara/oxide</url>
+  <url type="bugtracker">https://github.com/yksaionara/oxide/issues</url>
+  <developer id="io.github.yksaionara"><name>Oxide contributors</name></developer>
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-chat">intense</content_attribute>
+    <content_attribute id="social-audio">intense</content_attribute>
+    <content_attribute id="social-contacts">intense</content_attribute>
+  </content_rating>
+</component>

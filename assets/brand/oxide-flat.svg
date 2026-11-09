@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <title>Oxide flat app icon</title>
+  <desc>Oxide O-bubble app icon, revision 1. Vector contours only; no embedded raster images.</desc>
+<path id="oxide-background" d="M 302 0 H 722 C 827 0 880 0 926 28 C 968 54 998 93 1013 142 C 1024 178 1024 229 1024 302 V 722 C 1024 827 1024 880 996 926 C 970 968 931 998 882 1013 C 846 1024 795 1024 722 1024 H 302 C 197 1024 144 1024 98 996 C 56 970 26 931 11 882 C 0 846 0 795 0 722 V 302 C 0 197 0 144 28 98 C 54 56 93 26 142 11 C 178 0 229 0 302 0 Z" fill="#C9481F"/>
+<path id="oxide-ring" fill-rule="evenodd" d="M 233.845 608.382 A 300 300 0 1 1 399.618 774.155 Q 329.618 812.155 206 820 Q 231.845 698.382 233.845 608.382 Z M 660 496 A 148 148 0 1 0 364 496 A 148 148 0 1 0 660 496 Z" fill="#FFF4EC"/>
+<path id="oxide-core" d="M 576 496 A 64 64 0 1 0 448 496 A 64 64 0 1 0 576 496 Z" fill="#FFC296"/>
+</svg>

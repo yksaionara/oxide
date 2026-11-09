@@ -1,0 +1,9 @@
+[Flatpak Ref]
+Name=io.github.yksaionara.oxide
+Branch=master
+Title=Oxide
+Comment=Fast, secure and lightweight native Discord client
+Icon=https://yksaionara.github.io/oxide/icons/oxide.png
+Url=https://yksaionara.github.io/oxide/flatpak/repo
+RuntimeRepo=https://flathub.org/repo/flathub.flatpakrepo
+IsRuntime=false

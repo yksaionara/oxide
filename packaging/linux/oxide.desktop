@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Oxide
+Comment=Experimental unofficial native Discord client
+Exec=oxide
+Icon=oxide
+StartupWMClass=io.github.yksaionara.oxide
+Terminal=false
+Categories=Network;InstantMessaging;
