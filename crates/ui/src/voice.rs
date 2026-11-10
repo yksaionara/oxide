@@ -87,16 +87,20 @@ impl MessagingUi {
 				ui.set_min_size(screen.size());
 				let rect = egui::Rect::from_min_size(screen.min, screen.size());
 				ui.painter().rect_filled(rect, 0, STAGE_FILL);
-				match focus {
-					StageFocus::LocalScreen => self.screen_tile(ui, rect, false),
+				let content = match focus {
+					StageFocus::LocalScreen => {
+						self.screen_tile(ui, rect, false);
+						rect
+					}
 					StageFocus::Stream(user) => {
 						self.stream_tile(ui, state, rect, channel, user, true)
 					}
 					StageFocus::Participant(_) => unreachable!("validated screen share"),
-				}
+				};
+				// Bottom-right, after the stream's audio and Stop watching controls.
 				let button = ui.put(
 					egui::Rect::from_min_size(
-						rect.right_top() + egui::vec2(-52.0, 12.0),
+						content.right_bottom() - egui::vec2(16.0 + 40.0, 16.0 + 40.0),
 						egui::Vec2::splat(40.0),
 					),
 					egui::Button::new("")
@@ -1395,7 +1399,7 @@ impl MessagingUi {
 		channel: Id,
 		streamer: Id,
 		overlay: bool,
-	) {
+	) -> egui::Rect {
 		let name = participant_user(state, channel, streamer)
 			.map_or_else(|| "Participant".to_owned(), |user| user.name.clone());
 		let content = match &self.voice_stream_view {
@@ -1445,6 +1449,7 @@ impl MessagingUi {
 		if overlay {
 			self.stream_overlay_controls(ui, content);
 		}
+		content
 	}
 
 	/// Bottom-right actions over a fullscreen share: stream audio and Stop watching.
@@ -1456,7 +1461,9 @@ impl MessagingUi {
 			.painter()
 			.layout_no_wrap(stop_label.to_owned(), font, egui::Color32::WHITE);
 		let stop = egui::Rect::from_min_size(
-			content.right_bottom() - egui::vec2(16.0 + galley.size().x + 24.0, 16.0 + height),
+			// Leaves room on the right for the fullscreen exit button.
+			content.right_bottom()
+				- egui::vec2(16.0 + height + 8.0 + galley.size().x + 24.0, 16.0 + height),
 			egui::vec2(galley.size().x + 24.0, height),
 		);
 		let audio = egui::Rect::from_min_size(
