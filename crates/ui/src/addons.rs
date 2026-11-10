@@ -1,47 +1,38 @@
-//! Settings > Addons: features built into Oxide itself, as opposed to community extensions.
+//! Features built into Oxide itself: the Message Logger card shown first on the
+//! Extensions page, and the Drover voice unblock status in Voice settings.
 use crate::{MessagingUi, design};
 
-impl MessagingUi {
-	pub(super) fn addons_page(&mut self, ui: &mut egui::Ui) {
-		design::group(ui, "addons-game-activity", |ui| {
+/// Built-in Message Logger settings, listed above community extensions.
+pub(crate) fn message_logger_card(ui: &mut egui::Ui, logger: &mut model::addons::MessageLogger) {
+	design::group(ui, "addons-message-logger", |ui| {
+		design::switch(
+			ui,
+			"addons-message-logger",
+			Some("addons-message-logger-description"),
+			&mut logger.enabled,
+		);
+		ui.add_enabled_ui(logger.enabled, |ui| {
+			design::card_divider(ui);
 			design::switch(
 				ui,
-				"addons-game-activity",
-				Some("addons-game-activity-description"),
-				&mut self.share_game_activity,
+				"addons-logger-edit-history",
+				Some("addons-logger-edit-history-description"),
+				&mut logger.edit_history,
 			);
-		});
-		design::group(ui, "addons-message-logger", |ui| {
-			let logger = &mut self.addons.message_logger;
 			design::switch(
 				ui,
-				"addons-message-logger",
-				Some("addons-message-logger-description"),
-				&mut logger.enabled,
+				"addons-logger-ghost-pings",
+				Some("addons-logger-ghost-pings-description"),
+				&mut logger.ghost_pings,
 			);
-			ui.add_enabled_ui(logger.enabled, |ui| {
-				design::card_divider(ui);
-				design::switch(
-					ui,
-					"addons-logger-edit-history",
-					Some("addons-logger-edit-history-description"),
-					&mut logger.edit_history,
-				);
-				design::switch(
-					ui,
-					"addons-logger-ghost-pings",
-					Some("addons-logger-ghost-pings-description"),
-					&mut logger.ghost_pings,
-				);
-				design::switch(
-					ui,
-					"addons-logger-ignore-bots",
-					Some("addons-logger-ignore-bots-description"),
-					&mut logger.ignore_bots,
-				);
-			});
+			design::switch(
+				ui,
+				"addons-logger-ignore-bots",
+				Some("addons-logger-ignore-bots-description"),
+				&mut logger.ignore_bots,
+			);
 		});
-	}
+	});
 }
 
 impl MessagingUi {

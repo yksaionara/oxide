@@ -1398,7 +1398,13 @@ impl ExtensionUi {
 			}
 		}
 	}
-	pub(crate) fn settings(&mut self, ui: &mut egui::Ui, state: &State) {
+	/// `builtin` draws Oxide's own features above the community extensions grid.
+	pub(crate) fn settings(
+		&mut self,
+		ui: &mut egui::Ui,
+		state: &State,
+		builtin: impl FnOnce(&mut egui::Ui),
+	) {
 		self.theme_editor_visible = self.themes;
 		if self.themes && self.theme_editor.is_some() {
 			self.edit_theme(ui);
@@ -1409,10 +1415,25 @@ impl ExtensionUi {
 		let colors = design::palette(ui);
 		self.toolbar(ui, &colors);
 		ui.add_space(14.0);
+		let query = self.query.trim().to_lowercase();
+		if !self.themes
+			&& (query.is_empty()
+				|| [
+					"message logger",
+					"deleted",
+					"edited",
+					"ghost ping",
+					"built-in",
+				]
+				.iter()
+				.any(|keyword| keyword.contains(&query) || query.contains(keyword)))
+		{
+			builtin(ui);
+			ui.add_space(14.0);
+		}
 		let mut enable = None;
 		let mut disable = None;
 		let mut invoke = None;
-		let query = self.query.trim().to_lowercase();
 		let entries: Vec<_> = self
 			.entries
 			.iter()
@@ -3873,7 +3894,7 @@ mod tests {
 				if extensions.previewing_theme() {
 					extensions.theme_preview_bar(ui, 0.0);
 				} else {
-					extensions.settings(ui, &State::default());
+					extensions.settings(ui, &State::default(), |_| {});
 				}
 			},
 		);
@@ -4073,7 +4094,7 @@ mod tests {
 						)),
 						..Default::default()
 					},
-					|ui| shop.settings(ui, &State::default()),
+					|ui| shop.settings(ui, &State::default(), |_| {}),
 				)
 				.drop_without_applying_deltas();
 				for request in std::mem::take(&mut shop.requests) {
@@ -4095,7 +4116,7 @@ mod tests {
 					)),
 					..Default::default()
 				},
-				|ui| shop.settings(ui, &State::default()),
+				|ui| shop.settings(ui, &State::default(), |_| {}),
 			)
 			.drop_without_applying_deltas();
 			assert!(shop.requests.is_empty());

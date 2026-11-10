@@ -238,6 +238,12 @@ fn rows<'a>(
 	)
 }
 
+/// Server rows Oxide can open. Kinds it cannot render (server hubs/directories and
+/// unknown future kinds) are left out instead of listed as unavailable links.
+fn listable(channel: &Channel) -> bool {
+	channel.guild.is_none() || matches!(channel.kind, 0..=5 | 10..=13 | 15 | 16)
+}
+
 fn now_ms() -> i64 {
 	std::time::SystemTime::now()
 		.duration_since(std::time::UNIX_EPOCH)
@@ -271,7 +277,10 @@ fn rows_at<'a>(
 	let category_ids: BTreeSet<_> = categories.iter().map(|c| c.id).collect();
 	let mut groups: BTreeMap<Option<Id>, Vec<&Channel>> = BTreeMap::new();
 	let admitted = |c: &Channel| {
-		scope.admits(c, state) && (show_hidden || state.can_view(c.id)) && !roster.lifted(c.id)
+		scope.admits(c, state)
+			&& (show_hidden || state.can_view(c.id))
+			&& !roster.lifted(c.id)
+			&& listable(c)
 	};
 	// Threads appear only beneath their parents, following Discord's relevance rules.
 	let mut threads = guild.map_or_else(BTreeMap::new, |guild| {
@@ -1877,8 +1886,9 @@ mod tests {
 	}
 	#[test]
 	fn hidden_channels_are_opt_in() {
+		// Server hub/directory rows (kind 14) are never listed, hidden channels or not.
 		let state = State {
-			channels: vec![channel(1, 0, 0, None)],
+			channels: vec![channel(1, 0, 0, None), channel(2, 14, 1, None)],
 			..State::default()
 		};
 		assert!(!MessagingUi::default().show_hidden_channels);
