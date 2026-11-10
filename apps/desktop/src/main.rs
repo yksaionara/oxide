@@ -6010,6 +6010,11 @@ impl eframe::App for Desktop {
 		// change swings them between their limits and flickers (#889). The opt-in steady rate asks
 		// for the next frame within half a refresh: a Fifo present blocks until the next refresh
 		// anyway, and a surface that stops blocking (locked or occluded) cannot spin a core.
+		eframe::set_min_repaint_interval(if self.messaging.steady_refresh_rate {
+			Duration::ZERO
+		} else {
+			self.messaging.frame_rate_limit.interval()
+		});
 		if self.messaging.steady_refresh_rate
 			&& ctx.input(|input| {
 				input.focused

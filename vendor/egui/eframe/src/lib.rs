@@ -197,6 +197,10 @@ pub use native::macos::WindowChromeMetrics;
 #[cfg(any(feature = "glow", feature = "wgpu_no_default_features"))]
 pub use native::run::EframeWinitApplication;
 
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(feature = "glow", feature = "wgpu_no_default_features"))]
+pub use native::run::set_min_repaint_interval;
+
 #[cfg(not(any(target_arch = "wasm32", target_os = "ios")))]
 #[cfg(any(feature = "glow", feature = "wgpu_no_default_features"))]
 pub use native::run::EframePumpStatus;

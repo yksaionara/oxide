@@ -377,6 +377,8 @@ pub struct MessagingUi {
 	/// Device preference: repaint every display refresh while focused, so variable refresh rate
 	/// displays hold one rate instead of flickering.
 	pub steady_refresh_rate: bool,
+	/// Device preference: most frames per second drawn for input and animations.
+	pub frame_rate_limit: model::FrameRateLimit,
 	/// Adapter currently in use, shown next to the preference for bug reports.
 	pub gpu_adapter: String,
 	pub reading_status: &'static str,

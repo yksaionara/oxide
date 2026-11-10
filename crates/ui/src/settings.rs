@@ -191,6 +191,13 @@ fn gpu_label(language: Language, preference: model::GpuPreference) -> String {
 	})
 }
 
+fn frame_rate_label(language: Language, limit: model::FrameRateLimit) -> String {
+	match limit.fps() {
+		Some(fps) => format!("{fps} FPS"),
+		None => language.text("general-frame-rate-limit-display"),
+	}
+}
+
 fn graphics_api_label(language: Language, api: model::GraphicsApi) -> String {
 	if api == model::GraphicsApi::Automatic {
 		language.text("gpu-automatic")
@@ -1027,6 +1034,26 @@ impl MessagingUi {
 				Some(&description),
 				&mut self.steady_refresh_rate,
 			);
+			design::card_divider(ui);
+			let label = language.text("general-frame-rate-limit");
+			let description = language.text("general-frame-rate-limit-description");
+			design::row(ui, &label, Some(&description), |ui| {
+				// The steady rate repaints every refresh by definition, so the limit is moot.
+				ui.add_enabled_ui(!self.steady_refresh_rate, |ui| {
+					crate::design::Select::from_id_salt("frame-rate-limit")
+						.selected_text(frame_rate_label(language, self.frame_rate_limit))
+						.width(ui.available_width().min(220.0))
+						.show_ui(ui, |ui| {
+							for limit in model::FrameRateLimit::ALL {
+								ui.selectable_value(
+									&mut self.frame_rate_limit,
+									limit,
+									frame_rate_label(language, limit),
+								);
+							}
+						});
+				});
+			});
 		});
 		design::card(ui, |ui| {
 			design::row(

@@ -97,6 +97,54 @@ impl GraphicsApi {
 	}
 }
 
+/// Most frames per second Oxide draws for pointer motion, scrolling and animations. Immediate
+/// mode redraws the whole window each frame, so a 240 or 360 Hz display otherwise multiplies
+/// CPU and GPU use for no visible gain in a chat client. Unknown keys from newer builds use 60.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum FrameRateLimit {
+	#[serde(rename = "30")]
+	Fps30,
+	#[serde(rename = "120")]
+	Fps120,
+	#[serde(rename = "144")]
+	Fps144,
+	#[serde(rename = "240")]
+	Fps240,
+	/// Every display refresh, as before the limit existed.
+	#[serde(rename = "display")]
+	Display,
+	#[default]
+	#[serde(rename = "60", other)]
+	Fps60,
+}
+impl FrameRateLimit {
+	pub const ALL: [Self; 6] = [
+		Self::Fps30,
+		Self::Fps60,
+		Self::Fps120,
+		Self::Fps144,
+		Self::Fps240,
+		Self::Display,
+	];
+	/// Frames per second, or `None` to follow the display.
+	pub fn fps(self) -> Option<u32> {
+		match self {
+			Self::Fps30 => Some(30),
+			Self::Fps60 => Some(60),
+			Self::Fps120 => Some(120),
+			Self::Fps144 => Some(144),
+			Self::Fps240 => Some(240),
+			Self::Display => None,
+		}
+	}
+	/// Shortest time between two frames; zero follows the display.
+	pub fn interval(self) -> std::time::Duration {
+		self.fps().map_or(std::time::Duration::ZERO, |fps| {
+			std::time::Duration::from_secs(1) / fps
+		})
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
