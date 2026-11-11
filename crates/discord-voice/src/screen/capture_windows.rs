@@ -298,14 +298,14 @@ trait NativeSource:
 {
 	fn dimensions(&self) -> Option<(u32, u32)>;
 	/// Converts the source once, so Windows can answer with its permission decision.
-	fn probe(&self) -> Result<(), &'static str>;
+	fn probe(&self) -> Result<(), Cow<'static, str>>;
 }
 
 impl NativeSource for Monitor {
 	fn dimensions(&self) -> Option<(u32, u32)> {
 		self.width().ok().zip(self.height().ok())
 	}
-	fn probe(&self) -> Result<(), &'static str> {
+	fn probe(&self) -> Result<(), Cow<'static, str>> {
 		<Monitor as TryInto<windows_capture::settings::GraphicsCaptureItemType>>::try_into(*self)
 			.map(|_| ())
 			.map_err(|error| capture_refusal(error.code().0 as u32))
@@ -323,7 +323,7 @@ impl NativeSource for Window {
 					.and_then(|height| u32::try_from(height).ok()),
 			)
 	}
-	fn probe(&self) -> Result<(), &'static str> {
+	fn probe(&self) -> Result<(), Cow<'static, str>> {
 		<Window as TryInto<windows_capture::settings::GraphicsCaptureItemType>>::try_into(*self)
 			.map(|_| ())
 			.map_err(|error| capture_refusal(error.code().0 as u32))
@@ -338,15 +338,15 @@ fn start_item<T>(
 	stop: Arc<AtomicBool>,
 	pending: Arc<AtomicBool>,
 	cancel: Arc<AtomicBool>,
-) -> Result<Capture, &'static str>
+) -> Result<Capture, Cow<'static, str>>
 where
 	T: NativeSource,
 {
 	let Some((width, height)) = item.dimensions() else {
-		return Err("Selected source dimensions are unavailable");
+		return Err("Selected source dimensions are unavailable".into());
 	};
 	if width == 0 || height == 0 || width > MAX_FRAME_WIDTH || height > MAX_FRAME_HEIGHT {
-		return Err("Selected source exceeds the 4K capture limit");
+		return Err("Selected source exceeds the 4K capture limit".into());
 	}
 	// Windows 11 keeps a per-application consent; an application that never asks is denied and
 	// the Settings page lists no request. Asking here shows the system prompt once.
@@ -457,40 +457,37 @@ fn request_access(stop: &AtomicBool) -> Result<(), &'static str> {
 	}
 }
 
-/// The item conversion is the first place Windows reports the privacy decision.
-fn capture_refusal(code: u32) -> &'static str {
+/// The item conversion is the first place Windows reports the privacy decision. Any other
+/// refusal carries its Windows error code, the only clue to why one computer cannot capture.
+fn capture_refusal(code: u32) -> Cow<'static, str> {
 	if code == ACCESS_DENIED {
-		DENIED
+		DENIED.into()
 	} else {
-		"Screen capture could not be started"
+		format!("Screen capture could not be started (Windows error 0x{code:08X})").into()
 	}
 }
 
 fn start_failure(
 	error: &windows_capture::capture::GraphicsCaptureApiError<&'static str>,
-) -> &'static str {
+) -> Cow<'static, str> {
 	use windows_capture::{capture::GraphicsCaptureApiError as Error, graphics_capture_api};
 	match error {
-		Error::GraphicsCaptureApiError(graphics_capture_api::Error::WindowsError(windows))
-			if windows.code().0 as u32 == ACCESS_DENIED =>
-		{
-			DENIED
+		Error::GraphicsCaptureApiError(graphics_capture_api::Error::WindowsError(windows)) => {
+			capture_refusal(windows.code().0 as u32)
 		}
-		Error::DirectXError(_) => "The graphics driver could not start screen capture",
+		Error::DirectXError(_) => "The graphics driver could not start screen capture".into(),
 		Error::FailedToInitWinRT
 		| Error::FailedToCreateDispatcherQueueController
 		| Error::FailedToShutdownDispatcherQueue
 		| Error::FailedToSetDispatcherQueueCompletedHandler
 		| Error::FailedToRunMessageLoop
 		| Error::FailedToStartCaptureThread
-		| Error::FailedToJoinThread => "Windows could not start its screen-capture service",
-		Error::ItemConvertFailed => "The selected screen or window cannot be captured",
+		| Error::FailedToJoinThread => "Windows could not start its screen-capture service".into(),
+		Error::ItemConvertFailed => "The selected screen or window cannot be captured".into(),
 		Error::GraphicsCaptureApiError(graphics_capture_api::Error::Unsupported) => {
-			"Windows Graphics Capture is unavailable on this Windows build"
+			"Windows Graphics Capture is unavailable on this Windows build".into()
 		}
-		Error::GraphicsCaptureApiError(_) => "Windows refused to start screen capture",
-		Error::NewHandlerError(_) | Error::FrameHandlerError(_) => {
-			"Screen capture could not be started"
-		}
+		Error::GraphicsCaptureApiError(_) => "Windows refused to start screen capture".into(),
+		Error::NewHandlerError(reason) | Error::FrameHandlerError(reason) => (*reason).into(),
 	}
 }
