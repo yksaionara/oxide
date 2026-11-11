@@ -638,18 +638,28 @@ impl Streams {
 		}
 		Err(last_error)
 	}
-	/// True when the call follows the system default and that default now points elsewhere.
+	/// True when an open device should be replaced: the followed system default moved, or a
+	/// fallback stands in for a selected device that is back.
 	fn default_changed(&self, settings: &Devices) -> bool {
 		let id = |device: Option<cpal::Device>| {
 			device.and_then(|d| d.id().ok()).map(|id| id.to_string())
+		};
+		let present = |selected: &str| {
+			selected
+				.parse()
+				.is_ok_and(|selected| self.host.device_by_id(&selected).is_some())
 		};
 		default_device_changed(
 			settings.output.as_deref(),
 			self.output_id.as_deref(),
 			|| id(self.host.default_output_device()),
-		) || default_device_changed(settings.input.as_deref(), self.input_id.as_deref(), || {
-			id(self.host.default_input_device())
-		})
+			present,
+		) || default_device_changed(
+			settings.input.as_deref(),
+			self.input_id.as_deref(),
+			|| id(self.host.default_input_device()),
+			present,
+		)
 	}
 	fn open(settings: &Devices, gate: Arc<Gate>, revision: u64) -> Result<Self, &'static str> {
 		if gate.stopped.load(Ordering::Acquire)
@@ -749,13 +759,22 @@ impl Streams {
 }
 // A failed lookup is not evidence that a healthy stream's default changed. Device
 // callback failures still trigger recovery and replace the host along with the streams.
+// A device opened as the fallback for an absent selection follows the default too, and
+// yields as soon as the selected device is present again.
 fn default_device_changed(
 	selection: Option<&str>,
 	opened: Option<&str>,
 	lookup: impl FnOnce() -> Option<String>,
+	present: impl FnOnce(&str) -> bool,
 ) -> bool {
-	selection.is_none()
-		&& opened.is_some_and(|opened| lookup().is_some_and(|current| current != opened))
+	let Some(opened) = opened else {
+		return false;
+	};
+	match selection {
+		Some(selected) if selected == opened => false,
+		Some(selected) if present(selected) => true,
+		_ => lookup().is_some_and(|current| current != opened),
+	}
 }
 fn open_input_stream(
 	host: &cpal::Host,
@@ -807,11 +826,9 @@ fn choose(host: &cpal::Host, id: Option<&str>, input: bool) -> Result<cpal::Devi
 		if let Some(device) = host.device_by_id(&id) {
 			return Ok(device);
 		}
-		if input {
-			return Err("Selected microphone is unavailable");
-		}
 	}
-	// Keep the preference, but use the default while the selected device is absent.
+	// Keep the preference, but use the default while the selected device is absent. Windows
+	// can give a reconnected headset a new endpoint ID, so the old one may never return.
 	if input {
 		host.default_input_device()
 	} else {
@@ -1303,7 +1320,12 @@ mod tests {
 				_ if poll % 3 == 0 => None,
 				_ => Some("pulse:headphones"),
 			};
-			if default_device_changed(None, Some(&opened), || observed.map(str::to_owned)) {
+			if default_device_changed(
+				None,
+				Some(&opened),
+				|| observed.map(str::to_owned),
+				|_| unreachable!(),
+			) {
 				reopens += 1;
 				let next = audio.gate.revision.fetch_add(1, Ordering::AcqRel) + 1;
 				assert!(!audio.is_ready());
@@ -1317,15 +1339,42 @@ mod tests {
 	}
 
 	#[test]
-	fn explicit_or_unopened_devices_do_not_query_system_defaults() {
+	fn selected_devices_stay_put_and_fallbacks_yield_when_the_selection_returns() {
+		let never = |_: &str| -> bool { panic!("An open selected device needs no lookup") };
 		assert!(!default_device_changed(
 			Some("selected"),
-			Some("opened"),
-			|| { panic!("Explicit device selection must not query the default") }
+			Some("selected"),
+			|| panic!("Explicit device selection must not query the default"),
+			never
 		));
-		assert!(!default_device_changed(None, None, || {
-			panic!("Disabled or unavailable input has no active default to follow")
-		}));
+		assert!(!default_device_changed(
+			None,
+			None,
+			|| panic!("Disabled or unavailable input has no active default to follow"),
+			never
+		));
+		// A replugged headset with a new endpoint ID: the stale selection never returns,
+		// so the fallback follows the system default instead of sticking to the old one.
+		let absent = |_: &str| false;
+		assert!(!default_device_changed(
+			Some("stale"),
+			Some("speakers"),
+			|| Some("speakers".into()),
+			absent
+		));
+		assert!(default_device_changed(
+			Some("stale"),
+			Some("speakers"),
+			|| Some("headset".into()),
+			absent
+		));
+		// The selected device came back under its own ID: leave the fallback.
+		assert!(default_device_changed(
+			Some("headset"),
+			Some("speakers"),
+			|| panic!("A returned selection needs no default lookup"),
+			|selected| selected == "headset"
+		));
 	}
 
 	#[test]

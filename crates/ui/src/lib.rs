@@ -520,6 +520,8 @@ pub struct MessagingUi {
 	/// Speakers silenced on this device only; never sent to Discord.
 	voice_user_muted: Vec<u64>,
 	pub voice_refresh_devices: bool,
+	/// Set each frame the audio device picker is drawn, so the list follows hotplugged devices.
+	pub voice_devices_shown: bool,
 	pub voice_device_status: &'static str,
 	pub voice_microphone_unavailable: bool,
 	pub voice_push_to_talk: bool,
