@@ -34,6 +34,8 @@ use zeroize::Zeroizing;
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 /// Time a sole member gives the roster announcement before waiting for a peer.
 const PEER_GRACE: Duration = Duration::from_millis(500);
+/// Consecutive stream signaling resumes before the stream stops; a healthy socket renews them.
+const STREAM_RESUME_ATTEMPTS: u8 = 3;
 
 fn negotiation_timeout(
 	hello: bool,
@@ -1440,6 +1442,11 @@ async fn run_stream_inner(
 	let mut missed_acks = 0u8;
 	let mut awaiting_ack = None;
 	let mut seq_ack = -1i64;
+	// Set when the signaling socket dropped or went silent; the next loop turn resumes it
+	// like a voice call, keeping the UDP transport, its key and the DAVE group.
+	let mut reconnect: Option<&'static str> = None;
+	let mut resuming = false;
+	let mut resume_attempts = 0u8;
 	let mut deadline = Some(Instant::now() + Duration::from_secs(90));
 	let mut announced = false;
 	let mut waiting_announced = false;
@@ -1453,6 +1460,51 @@ async fn run_stream_inner(
 	let mut tick = tokio::time::interval(Duration::from_millis(20));
 	tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
 	loop {
+		if let Some(reason) = reconnect.take() {
+			// Before the transport key there is no session worth resuming.
+			if encryption.is_none() || resume_attempts >= STREAM_RESUME_ATTEMPTS {
+				return Err(reason);
+			}
+			resume_attempts += 1;
+			resuming = true;
+			announced = false;
+			awaiting_keyframe = true;
+			invalidate_stream(&mut video, &mut share_audio);
+			waiting_announced = false;
+			emit(Status::Securing).map_err(|_| "Stream interface closed")?;
+			deadline = Some(Instant::now() + Duration::from_secs(30));
+			heartbeat_ms = None;
+			awaiting_ack = None;
+			missed_acks = 0;
+			// Back off briefly so a flapping network is not hammered.
+			tokio::time::sleep(Duration::from_millis(500 * u64::from(resume_attempts))).await;
+			let replacement = match timeout(
+				Duration::from_secs(15),
+				tokio_tungstenite::connect_async_with_config(&url, Some(config), false),
+			)
+			.await
+			{
+				Ok(Ok((replacement, _))) => replacement,
+				// A failed reconnect spends an attempt; the last one reports why.
+				Ok(Err(_)) => {
+					reconnect = Some("Discord stream reconnect failed");
+					continue;
+				}
+				Err(_) => {
+					reconnect = Some("Discord stream reconnect timed out");
+					continue;
+				}
+			};
+			ws = replacement;
+			json_send(
+				&mut ws,
+				json!({"op":7,"d":{
+					"server_id":stream_server.to_string(),"session_id":credentials.session.expose(),
+					"token":credentials.token.expose(),"seq_ack":seq_ack
+				}}),
+			)
+			.await?;
+		}
 		// A transition must discard the rest of an access unit encrypted with the old
 		// epoch before any further packet is sent, including between paced batches.
 		if !announced
@@ -1535,7 +1587,7 @@ async fn run_stream_inner(
 			_=tick.tick()=>{
 				let now=Instant::now();
 				history.expire(now);
-				if deadline.is_some_and(|at| now>=at) {return Err(negotiation_timeout(heartbeat_ms.is_some(),udp.is_some(),encryption.is_some(),&dave,false));}
+				if deadline.is_some_and(|at| now>=at) {return Err(if resuming {"Discord stream resume was not acknowledged"} else {negotiation_timeout(heartbeat_ms.is_some(),udp.is_some(),encryption.is_some(),&dave,false)});}
 				if discovering && now>=discovery_deadline {return Err("Discord stream UDP discovery timed out");}
 				if !discovering && now>=next_udp_ping && let Some(socket)=&udp {
 					udp_keepalive(socket,&mut udp_failures,&mut udp_ping_sequence)?;
@@ -1544,20 +1596,21 @@ async fn run_stream_inner(
 				if let Some(interval)=heartbeat_ms && now>=heartbeat_at {
 					if awaiting_ack.is_some() {
 						missed_acks+=1;
-						if missed_acks>=2 {return Err("Discord stream heartbeat was not acknowledged");}
+						if missed_acks>=2 {reconnect=Some("Discord stream heartbeat was not acknowledged");continue;}
 					}
 					heartbeat_nonce=heartbeat_nonce.wrapping_add(1);
-					json_send(&mut ws,json!({"op":3,"d":{"t":heartbeat_nonce,"seq_ack":seq_ack}})).await?;
+					// A dead socket often fails this periodic write before a read notices.
+					if json_send(&mut ws,json!({"op":3,"d":{"t":heartbeat_nonce,"seq_ack":seq_ack}})).await.is_err() {reconnect=Some("Discord stream socket failed");continue;}
 					awaiting_ack=Some(heartbeat_nonce); heartbeat_at=now+Duration::from_millis(interval);
 				}
-				if secured_at.is_some_and(|at| now>=at+PEER_GRACE) && !discovering && dave.should_wait_for_peer() {dave.enter_sole_member_waiting()?;}
-				let waiting=dave.waiting && !dave.transitioning() && encryption.is_some() && !discovering;
+				if secured_at.is_some_and(|at| now>=at+PEER_GRACE) && !discovering && !resuming && dave.should_wait_for_peer() {dave.enter_sole_member_waiting()?;}
+				let waiting=dave.waiting && !dave.transitioning() && encryption.is_some() && !discovering && !resuming;
 				if waiting {deadline=None;}
 				if waiting!=waiting_announced {
 					emit(if waiting {Status::WaitingForPeer} else {Status::Securing}).map_err(|_|"Stream interface closed")?;
 					waiting_announced=waiting;
 				}
-				let secure=dave.ready&&dave.session.is_ready()&&!dave.transitioning()&&encryption.is_some()&&!discovering;
+				let secure=dave.ready&&dave.session.is_ready()&&!dave.transitioning()&&encryption.is_some()&&!discovering&&!resuming;
 				// A rekey can begin after initial readiness cleared the allocation deadline.
 				if !secure && !waiting {deadline.get_or_insert(now+Duration::from_secs(30));}
 				if secure && let Some(video)=&video && let Some(target)=rate.tick(now) {
@@ -1640,7 +1693,7 @@ async fn run_stream_inner(
 				// A viewer's subscription lapses silently and video stops with no loss to
 				// observe; refresh the sink wants while watching, and sooner while stalled.
 				if secure && announced && video.is_none() && now>=next_sink_wants {
-					json_send(&mut ws,json!({"op":15,"d":{"any":100}})).await?;
+					if json_send(&mut ws,json!({"op":15,"d":{"any":100}})).await.is_err() {reconnect=Some("Discord stream socket failed");continue;}
 					metrics.signal(Signal::SinkWantsSent,1);
 					next_sink_wants=now+if stalled {SINK_WANTS_STALLED_INTERVAL} else {SINK_WANTS_INTERVAL};
 				}
@@ -1698,7 +1751,7 @@ async fn run_stream_inner(
 			frame=async {match video.as_mut() {Some(video)=>video.frames.recv().await,None=>std::future::pending().await}}, if outgoing.is_empty()=>{
 				let Some(frame)=frame else {return Ok(());};
 				if frame.data.len()>2*1024*1024 {return Err("Encoded stream frame exceeds the sharing limit");}
-				let secure=announced&&dave.ready&&dave.session.is_ready()&&!dave.transitioning()&&encryption.is_some()&&!discovering&&video.as_ref().is_some_and(|video|video.ready.load(Ordering::Acquire));
+				let secure=announced&&!resuming&&dave.ready&&dave.session.is_ready()&&!dave.transitioning()&&encryption.is_some()&&!discovering&&video.as_ref().is_some_and(|video|video.ready.load(Ordering::Acquire));
 				if !secure {awaiting_keyframe=true;invalidate_stream(&mut video, &mut share_audio);continue;}
 				if awaiting_keyframe && !frame.keyframe {continue;}
 				let start=metrics.start();
@@ -1770,7 +1823,12 @@ async fn run_stream_inner(
 				receive_stream_video(&mut receivers,&mut playout,&mut sync,&mut dave,&mut metrics,first);
 			},
 			event=ws.next()=>{
-				let Some(Ok(event))=event else {return Err("Discord stream socket failed");};
+				// A dropped socket or a voice server crash (4015) keeps the stream session;
+				// resume it. Other close codes remain terminal below.
+				let event=match event {
+					Some(Ok(message)) if !matches!(&message, Message::Close(Some(frame)) if u16::from(frame.code)==4015)=>message,
+					_=>{reconnect=Some("Discord stream socket failed");continue;}
+				};
 				if signal_window.elapsed()>Duration::from_secs(1){signal_window=Instant::now();signal_count=0;}
 				signal_count+=1;if signal_count>256{return Err("Stream signaling exceeded the bounded processing rate");}
 				match event {
@@ -1783,7 +1841,13 @@ async fn run_stream_inner(
 						metrics.signal(signal_of(op),1);
 						match op {
 							8=>{let interval=data["heartbeat_interval"].as_f64().filter(|v|v.is_finite()&&*v>=100.&&*v<=120000.).ok_or("Invalid stream heartbeat")? as u64; heartbeat_ms=Some(interval.min(5000));heartbeat_at=Instant::now();},
-							6=>if acknowledges(awaiting_ack,missed_acks,data["t"].as_u64()) {awaiting_ack=None;missed_acks=0;},
+							6=>if acknowledges(awaiting_ack,missed_acks,data["t"].as_u64()) {
+								awaiting_ack=None;missed_acks=0;
+								// A healthy resumed socket renews the consecutive resume budget.
+								if !resuming {resume_attempts=0;}
+							},
+							// Resumed: the next tick announces the stream again, as on first readiness.
+							9=>{if !resuming {return Err("Unexpected stream resumption");}resuming=false;deadline=Some(Instant::now()+Duration::from_secs(30));},
 							2=>{
 								if udp.is_some(){return Err("Unexpected stream transport replacement");}
 								audio_ssrc=u32::try_from(number(data,"ssrc")?).ok().filter(|ssrc|*ssrc!=0).ok_or("Invalid stream SSRC")?;
