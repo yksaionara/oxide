@@ -82,6 +82,24 @@ async fn connect(
 	(ws, udp, client, package, soundshare)
 }
 
+async fn text(ws: &mut TestSocket) -> Value {
+	serde_json::from_str(message(ws).await.to_text().unwrap()).unwrap()
+}
+
+/// Accepts a resumed stream socket and completes Discord's Hello/Resumed exchange.
+async fn resume(listener: &TcpListener) -> TestSocket {
+	let (tcp, _) = listener.accept().await.unwrap();
+	let mut ws = tokio_tungstenite::accept_async(tcp).await.unwrap();
+	let resume = text(&mut ws).await;
+	assert_eq!(resume["op"], 7);
+	assert_eq!(resume["d"]["server_id"], "4");
+	assert_eq!(resume["d"]["session_id"], "synthetic-session");
+	assert!(resume["d"]["seq_ack"].as_i64().unwrap() >= 0);
+	event(&mut ws, json!({"op":8,"d":{"heartbeat_interval":5000}})).await;
+	event(&mut ws, json!({"op":9,"d":null})).await;
+	ws
+}
+
 fn credentials(user: u64) -> VoiceConnection {
 	VoiceConnection {
 		channel: Id(3),
@@ -451,6 +469,23 @@ async fn exchange(rekey_timeout: bool) {
 		assert!(!ready.load(Ordering::Acquire));
 		return;
 	}
+	// A signaling socket that drops without a close frame resumes the same session
+	// instead of ending the stream, then announces the stream again.
+	drop(view_ws);
+	let mut view_ws = resume(&listener).await;
+	let subscribed = text(&mut view_ws).await;
+	assert_eq!(subscribed["op"], 12);
+	assert_eq!(subscribed["d"]["audio_ssrc"], 42);
+	drop(send_ws);
+	let mut send_ws = resume(&listener).await;
+	let announced = loop {
+		let value = text(&mut send_ws).await;
+		if value["op"] != 5 {
+			break value;
+		}
+	};
+	assert_eq!(announced["op"], 12);
+	assert_eq!(announced["d"]["video_ssrc"], 51);
 	send_ws.close(None).await.unwrap();
 	view_ws.close(None).await.unwrap();
 	assert_eq!(
