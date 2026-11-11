@@ -256,10 +256,10 @@ Download `oxide-<version>-macOS-ARM64.zip` from [Releases](https://github.com/yk
 
 ## What Oxide adds
 
-- 🧩 **Addons tab (Settings › Addons):** features built into Oxide itself.
-  - **Message Logger:** deleted messages stay in the chat, highlighted in red, for the current session. Optional edit history (hover *(edited)* to see earlier versions), ghost-ping alerts, and an "ignore bots" filter. Nothing is written to disk.
+- 🧩 **Message Logger (built in, first card in Settings › Extensions):** deleted messages stay in the chat, highlighted in red, for the current session. Optional edit history (hover *(edited)* to see earlier versions), ghost-ping alerts, and an "ignore bots" filter. Nothing is written to disk.
 - 🔓 **Voice Unblock (Drover), always on:** calls and streams connect on networks that block Discord voice, such as in the UAE, exactly like Drover's direct mode (decoy datagrams before voice IP discovery). Oxide bundles the decoy packet, so Drover is not needed; a local `drover-packet.bin` is used first when present. Status is in Settings › Voice & Video.
-- 🎮 **Game activity toggle** in the call panel and Settings › Addons.
+- 🎮 **Game activity toggle** in the call panel.
+- 📺 **Floating stream player:** leave the channel while watching a stream and it keeps playing in a small draggable player; click it to return to the stream, or ✕ to stop watching.
 - ✅ **Read all:** a button at the top of the server list marks every server as read. Direct messages stay unread.
 - ⭐ **Favorite any picture or video:** hover a picture for the star, or right-click any picture or video and choose *Add to Favorites*. Favorites sync to your Discord account's favorite GIFs.
 - 🎥 **Up to 240 fps screen sharing:** 144 and 240 fps appear when your monitor refreshes that fast.

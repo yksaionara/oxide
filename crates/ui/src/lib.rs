@@ -6024,6 +6024,7 @@ impl MessagingUi {
 		if self.setup_pending {
 			self.show_setup(&ctx);
 		}
+		self.stream_mini_player(&ctx, state);
 		self.scroll.clear_if_unbound(&ctx);
 		self.scroll.paint(&ctx);
 		// Clear the title bar and channel header so a notice never sits on the chrome.

@@ -87,16 +87,20 @@ impl MessagingUi {
 				ui.set_min_size(screen.size());
 				let rect = egui::Rect::from_min_size(screen.min, screen.size());
 				ui.painter().rect_filled(rect, 0, STAGE_FILL);
-				match focus {
-					StageFocus::LocalScreen => self.screen_tile(ui, rect, false),
+				let content = match focus {
+					StageFocus::LocalScreen => {
+						self.screen_tile(ui, rect, false);
+						rect
+					}
 					StageFocus::Stream(user) => {
 						self.stream_tile(ui, state, rect, channel, user, true)
 					}
 					StageFocus::Participant(_) => unreachable!("validated screen share"),
-				}
+				};
+				// Bottom-right, after the stream's audio and Stop watching controls.
 				let button = ui.put(
 					egui::Rect::from_min_size(
-						rect.right_top() + egui::vec2(-52.0, 12.0),
+						content.right_bottom() - egui::vec2(16.0 + 40.0, 16.0 + 40.0),
 						egui::Vec2::splat(40.0),
 					),
 					egui::Button::new("")
@@ -1249,6 +1253,9 @@ impl MessagingUi {
 		if !ui.is_rect_visible(rect) {
 			return None;
 		}
+		// A click that dismisses an open menu (e.g. the stream volume menu) must not also
+		// act on the tile underneath, which would leave the enlarged stream.
+		let dismissing = egui::Popup::is_any_open(ui.ctx());
 		let compact = rect.height() < 132.0;
 		let hint = match tile {
 			Tile::LocalScreen => {
@@ -1277,7 +1284,7 @@ impl MessagingUi {
 				response.widget_info(|| {
 					egui::WidgetInfo::labeled(egui::Role::Button, can_watch, "Watch Stream")
 				});
-				if can_watch && (watch || response.clicked()) {
+				if can_watch && (watch || (response.clicked() && !dismissing)) {
 					// In the call, watch directly (DM calls have no guild roster entry);
 					// otherwise join the channel first, like the hover preview's button.
 					if state
@@ -1315,7 +1322,7 @@ impl MessagingUi {
 			} else {
 				format!("{hint} · {label}")
 			};
-			if response.clicked() {
+			if response.clicked() && !dismissing {
 				return Some(tile.focus());
 			}
 			response.on_hover_text(hover);
@@ -1392,7 +1399,7 @@ impl MessagingUi {
 		channel: Id,
 		streamer: Id,
 		overlay: bool,
-	) {
+	) -> egui::Rect {
 		let name = participant_user(state, channel, streamer)
 			.map_or_else(|| "Participant".to_owned(), |user| user.name.clone());
 		let content = match &self.voice_stream_view {
@@ -1442,6 +1449,7 @@ impl MessagingUi {
 		if overlay {
 			self.stream_overlay_controls(ui, content);
 		}
+		content
 	}
 
 	/// Bottom-right actions over a fullscreen share: stream audio and Stop watching.
@@ -1453,7 +1461,9 @@ impl MessagingUi {
 			.painter()
 			.layout_no_wrap(stop_label.to_owned(), font, egui::Color32::WHITE);
 		let stop = egui::Rect::from_min_size(
-			content.right_bottom() - egui::vec2(16.0 + galley.size().x + 24.0, 16.0 + height),
+			// Leaves room on the right for the fullscreen exit button.
+			content.right_bottom()
+				- egui::vec2(16.0 + height + 8.0 + galley.size().x + 24.0, 16.0 + height),
 			egui::vec2(galley.size().x + 24.0, height),
 		);
 		let audio = egui::Rect::from_min_size(
@@ -1617,6 +1627,105 @@ impl MessagingUi {
 			"voice-stream-audio-controls-stream-volume",
 			200,
 		);
+	}
+
+	/// Floating player for the watched share while its stage is out of view. Decoding
+	/// already continues off-stage, so this only paints the existing texture. Clicking it
+	/// returns to the enlarged stream; the close button stops watching.
+	pub(super) fn stream_mini_player(&mut self, ctx: &egui::Context, state: &State) {
+		let Some((channel, streamer)) = state
+			.voice
+			.active
+			.as_ref()
+			.and_then(|call| Some((call.channel, call.watching?)))
+		else {
+			return;
+		};
+		if state.selected == Some(channel) || self.is_voice_fullscreen() {
+			return;
+		}
+		let Some(texture) = self.voice_stream_view else {
+			return;
+		};
+		let width = 320.0;
+		let aspect = if texture.size.x > 0.0 && texture.size.y > 0.0 {
+			texture.size.y / texture.size.x
+		} else {
+			9.0 / 16.0
+		};
+		let size = egui::vec2(width, (width * aspect).clamp(120.0, 240.0));
+		let screen = ctx.content_rect();
+		let name = participant_user(state, channel, streamer)
+			.map_or_else(|| "Participant".to_owned(), |user| user.name.clone());
+		let mut open_stage = false;
+		let mut stop = false;
+		egui::Area::new(egui::Id::unique("stream-mini-player"))
+			.order(egui::Order::Middle)
+			.default_pos(screen.right_bottom() - size - egui::vec2(20.0, 110.0))
+			.movable(true)
+			.constrain(true)
+			.show(ctx, |ui| {
+				let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+				let painter = ui.painter();
+				painter.add(
+					egui::epaint::Shadow {
+						offset: [0, 6],
+						blur: 18,
+						spread: 0,
+						color: egui::Color32::from_black_alpha(110),
+					}
+					.as_shape(rect, 10),
+				);
+				painter.rect_filled(rect, 10, egui::Color32::BLACK);
+				let content = fit_rect(rect, texture.size);
+				egui::Image::from_texture((texture.id, content.size()))
+					.corner_radius(10)
+					.paint_at(ui, content);
+				ui.painter().rect_stroke(
+					rect,
+					10,
+					egui::Stroke::new(1.0, egui::Color32::from_white_alpha(36)),
+					egui::StrokeKind::Outside,
+				);
+				let hovered = ui.rect_contains_pointer(rect);
+				if hovered {
+					name_badge(ui, rect, &format!("{name}'s screen"), None, 1.0);
+					let close_rect = egui::Rect::from_center_size(
+						rect.right_top() + egui::vec2(-20.0, 20.0),
+						egui::Vec2::splat(26.0),
+					);
+					let close = ui.interact(
+						close_rect,
+						ui.scope_id().with("stream-mini-player-close"),
+						egui::Sense::click(),
+					);
+					ui.painter().circle_filled(
+						close_rect.center(),
+						13.0,
+						egui::Color32::from_black_alpha(if close.hovered() { 220 } else { 160 }),
+					);
+					crate::icons::paint(
+						ui.painter(),
+						crate::icons::Icon::Close,
+						egui::Rect::from_center_size(close_rect.center(), egui::Vec2::splat(14.0)),
+						STAGE_TEXT,
+					);
+					stop = close.clicked();
+					close.on_hover_text("Stop watching");
+				}
+				if response.clicked() && !stop {
+					open_stage = true;
+				}
+				response
+					.on_hover_cursor(egui::CursorIcon::PointingHand)
+					.on_hover_text("Return to the stream");
+			});
+		if stop {
+			self.watch_request = Some(None);
+		} else if open_stage {
+			// Reuses the preview Watch path: it focuses the stream and opens its channel.
+			self.stream_preview_watch = Some((channel, streamer));
+		}
 	}
 
 	/// Apply a tile's watch click once the stage has mutable state again.
