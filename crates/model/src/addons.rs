@@ -35,20 +35,10 @@ impl MessageLogger {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Addons {
 	pub message_logger: MessageLogger,
-	/// Drover-compatible voice unblock: decoy datagrams before voice UDP discovery.
-	pub voice_unblock: bool,
-}
-impl Default for Addons {
-	fn default() -> Self {
-		Self {
-			message_logger: MessageLogger::default(),
-			voice_unblock: true,
-		}
-	}
 }
 
 #[cfg(test)]
@@ -59,7 +49,6 @@ mod tests {
 		let addons: Addons =
 			serde_json::from_str(r#"{"message_logger":{"enabled":true}}"#).unwrap();
 		assert!(addons.message_logger.enabled && addons.message_logger.edit_history);
-		assert!(addons.voice_unblock);
 		let addons: Addons = serde_json::from_str(r#"{"future":1}"#).unwrap();
 		assert_eq!(addons, Addons::default());
 	}

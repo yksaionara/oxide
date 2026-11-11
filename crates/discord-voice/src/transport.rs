@@ -293,9 +293,12 @@ pub(super) fn announce_video(
 	retain_sources(decoder, receivers);
 	Ok(())
 }
-fn discovery(packet: &[u8], ssrc: u32) -> Result<(IpAddr, u16), &'static str> {
+/// Our address from the reply to this socket's discovery probe. `None` is some other datagram:
+/// the server may answer the unblock decoys sent ahead of the probe, and such a stray packet
+/// must not end the call. Discovery keeps waiting until its own deadline instead.
+fn discovery(packet: &[u8], ssrc: u32) -> Result<Option<(IpAddr, u16)>, &'static str> {
 	if packet.len() != 74 || packet[..4] != [0, 2, 0, 70] || packet[4..8] != ssrc.to_be_bytes() {
-		return Err("Invalid voice UDP discovery reply");
+		return Ok(None);
 	}
 	let end = packet[8..72]
 		.iter()
@@ -309,7 +312,7 @@ fn discovery(packet: &[u8], ssrc: u32) -> Result<(IpAddr, u16), &'static str> {
 	if port == 0 {
 		return Err("Invalid voice discovery port");
 	}
-	Ok((address, port))
+	Ok(Some((address, port)))
 }
 
 /// Drop the control sender or abort this future to stop the socket, UDP, codecs and ephemeral keys.
@@ -705,7 +708,7 @@ async fn run_inner(
 					   let length=match result {Ok(length)=>length,Err(error) if transient_receive(&error)=>continue,Err(_)=>return Err("Voice UDP receive failed")};
 					   if length>MAX_PACKET {continue;}
 					   if discovering {
-						   let (address,port)=discovery(&packet[..length],ssrc)?;
+						   let Some((address,port))=discovery(&packet[..length],ssrc)? else {continue};
 						   json_send(&mut ws,json!({"op":1,"d":{"protocol":"udp","data":{"address":address.to_string(),"port":port,"mode":MODE},"codecs":if video_capable{vec![json!({"name":"opus","type":"audio","priority":1000,"payload_type":120}),json!({"name":"H264","type":"video","priority":1000,"payload_type":101,"rtx_payload_type":102,"encode":camera.is_some(),"decode":decoder.is_some()})]}else{vec![json!({"name":"opus","type":"audio","priority":1000,"payload_type":120})]}}})).await?;
 						   discovering=false;continue;
 					   }
@@ -1766,7 +1769,7 @@ async fn run_stream_inner(
 				let length=match result {Ok(length)=>length,Err(error) if transient_receive(&error)=>continue,Err(_)=>return Err("Stream UDP receive failed")};
 				let received_at=Instant::now().into_std();
 				if discovering {
-					let (address,port)=discovery(&packet[..length],audio_ssrc)?;
+					let Some((address,port))=discovery(&packet[..length],audio_ssrc)? else {continue};
 					json_send(&mut ws,json!({"op":1,"d":{"protocol":"udp","data":{"address":address.to_string(),"port":port,"mode":MODE},"codecs":stream_codecs(video.is_some(),decoder.is_some(),hevc,av1)}})).await?;
 					discovering=false;
 					continue;
@@ -2809,8 +2812,10 @@ mod tests {
 		reply[4..8].copy_from_slice(&42u32.to_be_bytes());
 		reply[8..17].copy_from_slice(b"127.0.0.1");
 		reply[72..].copy_from_slice(&1234u16.to_be_bytes());
-		assert_eq!(discovery(&reply, 42).unwrap().1, 1234);
-		assert!(discovery(&reply, 43).is_err());
+		assert_eq!(discovery(&reply, 42).unwrap().unwrap().1, 1234);
+		// Replies to another probe and to the unblock decoys are skipped, not fatal.
+		assert_eq!(discovery(&reply, 43), Ok(None));
+		assert_eq!(discovery(&[0x01], 42), Ok(None));
 		let mut encoder = Encoder::new(48_000, Channels::Stereo, Application::Voip).unwrap();
 		let mut decoder = Decoder::new(48_000, Channels::Mono).unwrap();
 		let input = std::array::from_fn::<_, 1920, _>(|i| ((i / 2) as f32 * 0.06).sin() * 0.2);
@@ -2896,7 +2901,7 @@ mod tests {
 				break;
 			}
 			let mut probe = [0; 4096];
-			let (n, client) = udp.recv_from(&mut probe).await.unwrap();
+			let (n, client) = crate::unblock::expect_decoys_then_discovery(&udp, &mut probe).await;
 			assert_eq!(n, 74);
 			probe[..4].copy_from_slice(&[0, 2, 0, 70]);
 			probe[8..17].copy_from_slice(b"127.0.0.1");
@@ -3319,7 +3324,7 @@ mod tests {
 				break;
 			}
 			let mut probe = [0; 4096];
-			let (n, client) = udp.recv_from(&mut probe).await.unwrap();
+			let (n, client) = crate::unblock::expect_decoys_then_discovery(&udp, &mut probe).await;
 			assert_eq!(n, 74);
 			probe[..4].copy_from_slice(&[0, 2, 0, 70]);
 			probe[8..17].copy_from_slice(b"127.0.0.1");

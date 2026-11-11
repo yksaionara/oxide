@@ -63,6 +63,7 @@ impl Settings {
 			gpu_preference: ui.gpu_preference,
 			graphics_api: ui.graphics_api,
 			steady_refresh_rate: ui.steady_refresh_rate,
+			frame_rate_limit: ui.frame_rate_limit,
 			primary_color: ui.primary_color,
 			transparency_blur: ui.transparency_blur,
 			transparency: ui.transparency,
@@ -119,6 +120,7 @@ impl Settings {
 		ui.gpu_preference = value.gpu_preference;
 		ui.graphics_api = value.graphics_api;
 		ui.steady_refresh_rate = value.steady_refresh_rate;
+		ui.frame_rate_limit = value.frame_rate_limit;
 		ui.primary_color = value.primary_color;
 		ui.transparency_blur = value.transparency_blur;
 		ui.transparency = value.transparency;

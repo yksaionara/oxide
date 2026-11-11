@@ -36,12 +36,10 @@ enum Page {
 	Updates,
 	Extensions,
 	Themes,
-	/// Features built into Oxide, starting with the Message Logger.
-	Addons,
 }
 impl Page {
 	/// Every page in sidebar order; the narrow-window page picker lists them the same way.
-	const ALL: [Self; 16] = [
+	const ALL: [Self; 15] = [
 		Self::Account,
 		Self::Profile,
 		Self::MessagingPermissions,
@@ -55,7 +53,6 @@ impl Page {
 		Self::LanguageTime,
 		Self::General,
 		Self::Updates,
-		Self::Addons,
 		Self::Themes,
 		Self::Extensions,
 	];
@@ -85,10 +82,7 @@ impl Page {
 				Self::Updates,
 			],
 		),
-		(
-			"section-customization",
-			&[Self::Addons, Self::Themes, Self::Extensions],
-		),
+		("section-customization", &[Self::Themes, Self::Extensions]),
 	];
 	fn label_key(self) -> &'static str {
 		match self {
@@ -107,7 +101,6 @@ impl Page {
 			Self::Updates => "page-updates",
 			Self::Extensions => "page-extensions",
 			Self::Themes => "page-themes",
-			Self::Addons => "page-addons",
 		}
 	}
 	fn label(self, language: Language) -> String {
@@ -130,7 +123,6 @@ impl Page {
 			Self::Updates => "description-updates",
 			Self::Extensions => "description-extensions",
 			Self::Themes => "description-themes",
-			Self::Addons => "description-addons",
 		}
 	}
 	fn description(self, language: Language) -> String {
@@ -159,7 +151,7 @@ impl Page {
 				"game activity playing osu status presence sharing registered games added current game detection detected process program executable rename wrong add hide last played"
 			}
 			Self::Voice => {
-				"voice video camera preview audio microphone speakers devices volume gain noise suppression push to talk"
+				"voice video camera preview audio microphone speakers devices volume gain noise suppression push to talk drover unblock blocked calls uae vpn"
 			}
 			Self::LanguageTime => {
 				"language time clock 12 hour 24 hour am pm format locale translation"
@@ -171,11 +163,10 @@ impl Page {
 			Self::Keybinds => {
 				"system keybinds keyboard shortcuts custom default formatting navigation"
 			}
-			Self::Extensions => "extensions plugins shop store catalog import community tools",
-			Self::Themes => "themes shop store catalog import community appearance colors",
-			Self::Addons => {
-				"addons add-ons message logger deleted edited edit history ghost ping bots drover voice unblock blocked calls uae vpn"
+			Self::Extensions => {
+				"extensions plugins shop store catalog import community tools addons add-ons message logger deleted edited edit history ghost ping bots"
 			}
+			Self::Themes => "themes shop store catalog import community appearance colors",
 		};
 		keywords.contains(query)
 			|| self.label(language).to_lowercase().contains(query)
@@ -189,6 +180,13 @@ fn gpu_label(language: Language, preference: model::GpuPreference) -> String {
 		model::GpuPreference::HighPerformance => "gpu-high-performance",
 		model::GpuPreference::PowerSaving => "gpu-power-saving",
 	})
+}
+
+fn frame_rate_label(language: Language, limit: model::FrameRateLimit) -> String {
+	match limit.fps() {
+		Some(fps) => format!("{fps} FPS"),
+		None => language.text("general-frame-rate-limit-display"),
+	}
 }
 
 fn graphics_api_label(language: Language, api: model::GraphicsApi) -> String {
@@ -500,7 +498,6 @@ impl MessagingUi {
 									),
 									Page::Storage => self.storage_page(ui, state),
 									Page::Updates => self.update_settings(ui, state.demo),
-									Page::Addons => self.addons_page(ui),
 									Page::Keybinds => crate::keybinds::show(
 										ui,
 										&mut self.keybinds,
@@ -510,7 +507,10 @@ impl MessagingUi {
 									Page::Extensions | Page::Themes => {
 										self.extensions
 											.select_themes(self.settings.page == Page::Themes);
-										self.extensions.settings(ui, state);
+										let logger = &mut self.addons.message_logger;
+										self.extensions.settings(ui, state, |ui| {
+											crate::addons::message_logger_card(ui, logger)
+										});
 									}
 								}
 								if state.demo {
@@ -1027,6 +1027,26 @@ impl MessagingUi {
 				Some(&description),
 				&mut self.steady_refresh_rate,
 			);
+			design::card_divider(ui);
+			let label = language.text("general-frame-rate-limit");
+			let description = language.text("general-frame-rate-limit-description");
+			design::row(ui, &label, Some(&description), |ui| {
+				// The steady rate repaints every refresh by definition, so the limit is moot.
+				ui.add_enabled_ui(!self.steady_refresh_rate, |ui| {
+					crate::design::Select::from_id_salt("frame-rate-limit")
+						.selected_text(frame_rate_label(language, self.frame_rate_limit))
+						.width(ui.available_width().min(220.0))
+						.show_ui(ui, |ui| {
+							for limit in model::FrameRateLimit::ALL {
+								ui.selectable_value(
+									&mut self.frame_rate_limit,
+									limit,
+									frame_rate_label(language, limit),
+								);
+							}
+						});
+				});
+			});
 		});
 		design::card(ui, |ui| {
 			design::row(

@@ -83,6 +83,8 @@ pub struct AppPreferences {
 	/// Repaint every display refresh while the window is focused, so variable refresh rate
 	/// displays hold one rate; older preferences deserialize with it off.
 	pub steady_refresh_rate: bool,
+	/// Cap on frames drawn for input and animations; older preferences take the 60 fps default.
+	pub frame_rate_limit: model::FrameRateLimit,
 	/// Device-local, account-independent keyboard bindings.
 	pub keybinds: model::Keybinds,
 	/// Expanded server folders, bounded so one device preference stays small.
@@ -141,6 +143,7 @@ impl Default for AppPreferences {
 			gpu_preference: Default::default(),
 			graphics_api: Default::default(),
 			steady_refresh_rate: false,
+			frame_rate_limit: Default::default(),
 			keybinds: Default::default(),
 			expanded_folders: Vec::new(),
 			user_volumes: Vec::new(),
@@ -173,7 +176,10 @@ impl AppPreferences {
 				.is_none_or(|value| value.custom.is_valid())
 			&& self.expanded_folders.len() <= 256
 			&& self.user_volumes.len() <= 64
-			&& self.user_volumes.iter().all(|(_, volume)| *volume <= 200)
+			&& self
+				.user_volumes
+				.iter()
+				.all(|(_, volume)| *volume <= model::voice_settings::MAX_USER_VOLUME)
 			&& self.muted_users.len() <= 64
 			&& self.keybinds.is_valid()
 			&& self.image_cache.is_valid()
@@ -2271,6 +2277,7 @@ mod tests {
 			gpu_preference: model::GpuPreference::PowerSaving,
 			graphics_api: model::GraphicsApi::OpenGl,
 			steady_refresh_rate: true,
+			frame_rate_limit: model::FrameRateLimit::Display,
 			..Default::default()
 		};
 		store.save_app_preferences(&value).unwrap();
@@ -2364,7 +2371,7 @@ mod tests {
 				.execute(
 					"INSERT INTO app_preferences VALUES(1,?1)",
 					[
-						r#"{"gpu_preference":"quantum-gpu","graphics_api":"future-api","steady_refresh_rate":true}"#,
+						r#"{"gpu_preference":"quantum-gpu","graphics_api":"future-api","steady_refresh_rate":true,"frame_rate_limit":"1000"}"#,
 					],
 				)
 				.unwrap();
@@ -2375,6 +2382,7 @@ mod tests {
 			let saved = store.app_preferences().unwrap();
 			assert_eq!(saved.graphics_api, model::GraphicsApi::Automatic);
 			assert!(saved.steady_refresh_rate);
+			assert_eq!(saved.frame_rate_limit, model::FrameRateLimit::Fps60);
 		}
 	}
 	use super::*;

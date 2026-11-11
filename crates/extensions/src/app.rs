@@ -1516,8 +1516,8 @@ impl AudioSettingsPatch {
 		Ok(())
 	}
 }
-fn audio_patch(volume: Option<u16>, muted: Option<bool>) -> Result<(), Error> {
-	if (volume.is_none() && muted.is_none()) || volume.is_some_and(|value| value > 200) {
+fn audio_patch(volume: Option<u16>, muted: Option<bool>, max: u16) -> Result<(), Error> {
+	if (volume.is_none() && muted.is_none()) || volume.is_some_and(|value| value > max) {
 		return Err(Error::Invalid);
 	}
 	Ok(())
@@ -1868,12 +1868,12 @@ impl AppAction {
 				muted,
 			} => {
 				entity_id(user_id)?;
-				audio_patch(*volume_percent, *muted)?;
+				audio_patch(*volume_percent, *muted, 500)?;
 			}
 			Self::SetStreamAudio {
 				volume_percent,
 				muted,
-			} => audio_patch(*volume_percent, *muted)?,
+			} => audio_patch(*volume_percent, *muted, 200)?,
 			Self::OpenAttachmentPicker { channel_id } => entity_id(channel_id)?,
 			Self::SelectAudioDevices {
 				input_id,

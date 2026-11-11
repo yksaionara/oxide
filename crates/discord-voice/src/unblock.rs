@@ -1,9 +1,18 @@
-//! Drover-compatible voice unblock. Some networks drop Discord voice when the first datagram a
-//! flow carries is the 74-byte IP discovery packet. Like Drover's direct mode, a short decoy
-//! sequence precedes it on the same socket: an optional user-supplied datagram (Drover's
-//! `drover-packet.bin`), then two one-byte datagrams, then a 50 ms pause. The voice server
-//! ignores the decoys; nothing else about the connection changes.
+//! Drover voice unblock, always on and matching Drover's direct mode byte for byte.
+//!
+//! Some networks (such as in the UAE) drop Discord voice when the first datagram of a flow is
+//! the 74-byte IP discovery packet. Drover's `version.dll` hooks the first `WSASendTo` of each
+//! UDP socket and, when it carries 74 bytes, first sends:
+//! 1. the whole of `drover-packet.bin`, read fresh for each socket, when it exists;
+//! 2. one datagram holding the byte `0x00`;
+//! 3. one datagram holding the byte `0x01`;
+//!
+//! then sleeps 50 ms before letting the real packet go. Oxide does the same on every voice
+//! and stream socket, right before its discovery packet. A `drover-packet.bin` found on this
+//! computer wins; otherwise Oxide sends the copy bundled with it, a 1200-byte QUIC Initial
+//! decoy. The voice server ignores the decoys and nothing else about the call changes.
 use std::{
+	path::PathBuf,
 	sync::{Arc, RwLock},
 	time::Duration,
 };
@@ -11,52 +20,64 @@ use tokio::net::UdpSocket;
 
 /// Largest datagram payload UDP over IPv4 can carry.
 pub const MAX_PACKET: usize = 65_507;
+/// Drover's own pause before the real packet.
 const PAUSE: Duration = Duration::from_millis(50);
+/// The decoy shipped with Oxide, used when this computer has no `drover-packet.bin`.
+pub const BUNDLED_PACKET: &[u8] = include_bytes!("../assets/drover-packet.bin");
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct VoiceUnblock {
-	/// Sent first when present; bounded by [`MAX_PACKET`].
-	pub packet: Option<Arc<[u8]>>,
-}
+static LOCAL_PACKET: RwLock<Option<Arc<PathBuf>>> = RwLock::new(None);
 
-static CURRENT: RwLock<Option<VoiceUnblock>> = RwLock::new(None);
-
-/// Applies to every voice and stream connection that starts afterwards. `None` turns it off.
-pub fn set(unblock: Option<VoiceUnblock>) {
-	let unblock = unblock.map(|mut unblock| {
-		unblock.packet = unblock
-			.packet
-			.filter(|packet| !packet.is_empty() && packet.len() <= MAX_PACKET);
-		unblock
-	});
-	if let Ok(mut current) = CURRENT.write() {
-		*current = unblock;
+/// A `drover-packet.bin` found on this computer, read again for every new socket like Drover.
+/// `None` uses the bundled packet.
+pub fn set_local_packet(path: Option<PathBuf>) {
+	if let Ok(mut current) = LOCAL_PACKET.write() {
+		*current = path.map(Arc::new);
 	}
 }
 
-fn current() -> Option<VoiceUnblock> {
-	CURRENT.read().ok().and_then(|current| current.clone())
+/// The decoy for one new socket: the local file when it is readable and bounded, otherwise
+/// the bundled one. A missing or broken local file never stops a call.
+async fn packet() -> Arc<[u8]> {
+	let path = LOCAL_PACKET.read().ok().and_then(|path| path.clone());
+	if let Some(path) = path
+		&& let Ok(metadata) = tokio::fs::metadata(path.as_ref()).await
+		&& (1..=MAX_PACKET as u64).contains(&metadata.len())
+		&& let Ok(bytes) = tokio::fs::read(path.as_ref()).await
+		&& (1..=MAX_PACKET).contains(&bytes.len())
+	{
+		return Arc::from(bytes);
+	}
+	Arc::from(BUNDLED_PACKET)
 }
 
-/// Sends the decoy sequence on a connected socket, before its discovery packet.
+/// Sends Drover's decoy sequence on a connected socket, before its discovery packet.
 /// Send failures are ignored: discovery itself reports a broken path.
 pub(crate) async fn before_discovery(socket: &UdpSocket) {
-	if let Some(unblock) = current() {
-		send_decoys(socket, &unblock).await;
-	}
+	send_decoys(socket, &packet().await).await;
 }
 
-async fn send_decoys(socket: &UdpSocket, unblock: &VoiceUnblock) {
-	if let Some(packet) = unblock
-		.packet
-		.as_ref()
-		.filter(|packet| !packet.is_empty() && packet.len() <= MAX_PACKET)
-	{
+async fn send_decoys(socket: &UdpSocket, packet: &[u8]) {
+	if (1..=MAX_PACKET).contains(&packet.len()) {
 		let _ = socket.send(packet).await;
 	}
-	let _ = socket.send(&[0]).await;
-	let _ = socket.send(&[1]).await;
+	let _ = socket.send(&[0x00]).await;
+	let _ = socket.send(&[0x01]).await;
 	tokio::time::sleep(PAUSE).await;
+}
+
+/// Test voice servers: asserts Drover's decoys arrive in order on a fresh socket, then
+/// returns the discovery packet's length and sender.
+#[cfg(test)]
+pub(crate) async fn expect_decoys_then_discovery(
+	udp: &UdpSocket,
+	buffer: &mut [u8],
+) -> (usize, std::net::SocketAddr) {
+	assert!(buffer.len() > BUNDLED_PACKET.len());
+	for expected in [BUNDLED_PACKET, &[0x00][..], &[0x01][..]] {
+		let (length, _) = udp.recv_from(buffer).await.unwrap();
+		assert_eq!(&buffer[..length], expected, "Drover decoy out of order");
+	}
+	udp.recv_from(buffer).await.unwrap()
 }
 
 #[cfg(test)]
@@ -70,11 +91,8 @@ mod tests {
 			.connect(receiver.local_addr().unwrap())
 			.await
 			.unwrap();
-		for packet in [Arc::from(&b"decoy"[..]), Arc::from(vec![9; MAX_PACKET + 1])] {
-			let unblock = VoiceUnblock {
-				packet: Some(packet),
-			};
-			send_decoys(&sender, &unblock).await;
+		for packet in [&b"decoy"[..], &vec![9; MAX_PACKET + 1][..]] {
+			send_decoys(&sender, packet).await;
 			sender.send(&[7; 74]).await.unwrap();
 		}
 		let mut buffer = vec![0; MAX_PACKET + 8];

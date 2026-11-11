@@ -33,7 +33,6 @@ pub struct ScreenUi {
 	/// Selection the current resolution was chosen for. `None` until sources arrive.
 	quality_for: Option<SourceId>,
 	fps: u32,
-	cursor: bool,
 	audio: bool,
 }
 impl Default for ScreenUi {
@@ -54,7 +53,6 @@ impl Default for ScreenUi {
 			resolution: Resolution::Source,
 			quality_for: None,
 			fps: 30,
-			cursor: true,
 			audio: cfg!(target_os = "macos"),
 		}
 	}
@@ -150,7 +148,8 @@ impl ScreenUi {
 			width,
 			height,
 			fps: self.fps,
-			cursor: self.cursor,
+			// The pointer is always part of the shared video.
+			cursor: true,
 			audio: self.audio,
 		};
 		settings.valid().then_some(settings)
@@ -296,15 +295,8 @@ impl ScreenUi {
 			)
 			.wrap(),
 		);
-		ui.add_space(10.0);
-		crate::design::switch(
-			ui,
-			"screen-body-show-cursor",
-			Some("screen-body-include-the-pointer-in-the-shared-video"),
-			&mut self.cursor,
-		);
 		if self.supported {
-			ui.add_space(6.0);
+			ui.add_space(10.0);
 			crate::design::switch(
 				ui,
 				"screen-body-share-system-audio",

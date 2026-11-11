@@ -1,4 +1,8 @@
 //! Device-local microphone processing. Profiles leave the user's custom settings intact.
+
+/// Highest per-person voice volume, in percent; mixed as a 5× gain.
+pub const MAX_USER_VOLUME: u16 = 500;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -20,10 +20,10 @@ pub(super) struct VoiceDrag(pub Id, pub Id, pub Id);
 
 pub(super) struct CallSwitch {
 	from: (Id, u64),
-	channel: Id,
+	pub(super) channel: Id,
 	ring: bool,
 	generation: u64,
-	confirmed_at: Option<std::time::Instant>,
+	pub(super) confirmed_at: Option<std::time::Instant>,
 	audio: Option<(bool, bool)>,
 }
 
@@ -87,16 +87,20 @@ impl MessagingUi {
 				ui.set_min_size(screen.size());
 				let rect = egui::Rect::from_min_size(screen.min, screen.size());
 				ui.painter().rect_filled(rect, 0, STAGE_FILL);
-				match focus {
-					StageFocus::LocalScreen => self.screen_tile(ui, rect, false),
+				let content = match focus {
+					StageFocus::LocalScreen => {
+						self.screen_tile(ui, rect, false);
+						rect
+					}
 					StageFocus::Stream(user) => {
 						self.stream_tile(ui, state, rect, channel, user, true)
 					}
 					StageFocus::Participant(_) => unreachable!("validated screen share"),
-				}
+				};
+				// Bottom-right, after the stream's audio and Stop watching controls.
 				let button = ui.put(
 					egui::Rect::from_min_size(
-						rect.right_top() + egui::vec2(-52.0, 12.0),
+						content.right_bottom() - egui::vec2(16.0 + 40.0, 16.0 + 40.0),
 						egui::Vec2::splat(40.0),
 					),
 					egui::Button::new("")
@@ -296,9 +300,13 @@ impl MessagingUi {
 						.as_deref()
 						.and_then(|values| values.iter().find(|(user, _)| *user == id))
 						.map_or(100, |(_, volume)| *volume);
-					let changed =
-						gain_slider(ui, &mut volume, "voice-voice-participant-menu-user-volume")
-							.changed();
+					let changed = gain_slider(
+						ui,
+						&mut volume,
+						"voice-voice-participant-menu-user-volume",
+						model::voice_settings::MAX_USER_VOLUME,
+					)
+					.changed();
 					let reset = ui
 						.add_enabled(
 							volume != 100,
@@ -674,13 +682,17 @@ impl MessagingUi {
 						egui::vec2(ui.available_width(), 28.0),
 						egui::Layout::left_to_right(egui::Align::Center),
 						|ui| {
-							ui.add(
+							let label = ui.add(
 								egui::Label::new(RichText::new(name).color(name_color))
 									.truncate()
 									.show_tooltip_when_elided(false)
 									.selectable(false),
-							)
-							.on_hover_text(name);
+							);
+							// A live row shows the stream card from anywhere on the row
+							// instead; the name's own tooltip would win over it.
+							if !entry.participant.streaming {
+								label.on_hover_text(name);
+							}
 						},
 					);
 				});
@@ -703,7 +715,7 @@ impl MessagingUi {
 		entry: &RosterEntry,
 	) {
 		let target = (entry.guild, entry.channel, entry.participant.user);
-		let mut tooltip = egui::Tooltip::for_enabled(row)
+		let mut tooltip = egui::Tooltip::for_widget(row)
 			.gap(8.0)
 			.width(324.0)
 			.accessible_name("Stream preview");
@@ -713,7 +725,10 @@ impl MessagingUi {
 				.inner_margin(12)
 				.corner_radius(10),
 		);
-		let open = tooltip.popup.is_open();
+		// Opens after a short hover anywhere on the row, much sooner than an ordinary
+		// tooltip, and stays open while the pointer moves onto the card to click Watch.
+		let open = stream_card_hovered(ui, row) || egui::Tooltip::should_show_tooltip(row, true);
+		tooltip.popup = tooltip.popup.open(open);
 		if open {
 			let frame = ui.ctx().cumulative_frame_nr();
 			if !self
@@ -879,6 +894,14 @@ impl MessagingUi {
 					|| state.watch_stream(user).is_some()
 				{
 					self.voice_focus = Some(StageFocus::Stream(user));
+					// The stage only draws for the open conversation; without this the
+					// first Watch only marks the stream watched and nothing opens.
+					self.voice_chat_open = false;
+					if state.selected != Some(channel)
+						&& let Some(command) = state.select(channel)
+					{
+						commands.push(command);
+					}
 				} else {
 					state.status = "This stream is not available in the connected voice channel";
 				}
@@ -1230,6 +1253,9 @@ impl MessagingUi {
 		if !ui.is_rect_visible(rect) {
 			return None;
 		}
+		// A click that dismisses an open menu (e.g. the stream volume menu) must not also
+		// act on the tile underneath, which would leave the enlarged stream.
+		let dismissing = egui::Popup::is_any_open(ui.ctx());
 		let compact = rect.height() < 132.0;
 		let hint = match tile {
 			Tile::LocalScreen => {
@@ -1258,7 +1284,7 @@ impl MessagingUi {
 				response.widget_info(|| {
 					egui::WidgetInfo::labeled(egui::Role::Button, can_watch, "Watch Stream")
 				});
-				if can_watch && (watch || response.clicked()) {
+				if can_watch && (watch || (response.clicked() && !dismissing)) {
 					// In the call, watch directly (DM calls have no guild roster entry);
 					// otherwise join the channel first, like the hover preview's button.
 					if state
@@ -1296,7 +1322,7 @@ impl MessagingUi {
 			} else {
 				format!("{hint} · {label}")
 			};
-			if response.clicked() {
+			if response.clicked() && !dismissing {
 				return Some(tile.focus());
 			}
 			response.on_hover_text(hover);
@@ -1373,7 +1399,7 @@ impl MessagingUi {
 		channel: Id,
 		streamer: Id,
 		overlay: bool,
-	) {
+	) -> egui::Rect {
 		let name = participant_user(state, channel, streamer)
 			.map_or_else(|| "Participant".to_owned(), |user| user.name.clone());
 		let content = match &self.voice_stream_view {
@@ -1423,6 +1449,7 @@ impl MessagingUi {
 		if overlay {
 			self.stream_overlay_controls(ui, content);
 		}
+		content
 	}
 
 	/// Bottom-right actions over a fullscreen share: stream audio and Stop watching.
@@ -1434,7 +1461,9 @@ impl MessagingUi {
 			.painter()
 			.layout_no_wrap(stop_label.to_owned(), font, egui::Color32::WHITE);
 		let stop = egui::Rect::from_min_size(
-			content.right_bottom() - egui::vec2(16.0 + galley.size().x + 24.0, 16.0 + height),
+			// Leaves room on the right for the fullscreen exit button.
+			content.right_bottom()
+				- egui::vec2(16.0 + height + 8.0 + galley.size().x + 24.0, 16.0 + height),
 			egui::vec2(galley.size().x + 24.0, height),
 		);
 		let audio = egui::Rect::from_min_size(
@@ -1596,7 +1625,107 @@ impl MessagingUi {
 			ui,
 			self.voice_stream_volume.get_or_insert(100),
 			"voice-stream-audio-controls-stream-volume",
+			200,
 		);
+	}
+
+	/// Floating player for the watched share while its stage is out of view. Decoding
+	/// already continues off-stage, so this only paints the existing texture. Clicking it
+	/// returns to the enlarged stream; the close button stops watching.
+	pub(super) fn stream_mini_player(&mut self, ctx: &egui::Context, state: &State) {
+		let Some((channel, streamer)) = state
+			.voice
+			.active
+			.as_ref()
+			.and_then(|call| Some((call.channel, call.watching?)))
+		else {
+			return;
+		};
+		if state.selected == Some(channel) || self.is_voice_fullscreen() {
+			return;
+		}
+		let Some(texture) = self.voice_stream_view else {
+			return;
+		};
+		let width = 320.0;
+		let aspect = if texture.size.x > 0.0 && texture.size.y > 0.0 {
+			texture.size.y / texture.size.x
+		} else {
+			9.0 / 16.0
+		};
+		let size = egui::vec2(width, (width * aspect).clamp(120.0, 240.0));
+		let screen = ctx.content_rect();
+		let name = participant_user(state, channel, streamer)
+			.map_or_else(|| "Participant".to_owned(), |user| user.name.clone());
+		let mut open_stage = false;
+		let mut stop = false;
+		egui::Area::new(egui::Id::unique("stream-mini-player"))
+			.order(egui::Order::Middle)
+			.default_pos(screen.right_bottom() - size - egui::vec2(20.0, 110.0))
+			.movable(true)
+			.constrain(true)
+			.show(ctx, |ui| {
+				let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+				let painter = ui.painter();
+				painter.add(
+					egui::epaint::Shadow {
+						offset: [0, 6],
+						blur: 18,
+						spread: 0,
+						color: egui::Color32::from_black_alpha(110),
+					}
+					.as_shape(rect, 10),
+				);
+				painter.rect_filled(rect, 10, egui::Color32::BLACK);
+				let content = fit_rect(rect, texture.size);
+				egui::Image::from_texture((texture.id, content.size()))
+					.corner_radius(10)
+					.paint_at(ui, content);
+				ui.painter().rect_stroke(
+					rect,
+					10,
+					egui::Stroke::new(1.0, egui::Color32::from_white_alpha(36)),
+					egui::StrokeKind::Outside,
+				);
+				let hovered = ui.rect_contains_pointer(rect);
+				if hovered {
+					name_badge(ui, rect, &format!("{name}'s screen"), None, 1.0);
+					let close_rect = egui::Rect::from_center_size(
+						rect.right_top() + egui::vec2(-20.0, 20.0),
+						egui::Vec2::splat(26.0),
+					);
+					let close = ui.interact(
+						close_rect,
+						ui.scope_id().with("stream-mini-player-close"),
+						egui::Sense::click(),
+					);
+					ui.painter().circle_filled(
+						close_rect.center(),
+						13.0,
+						egui::Color32::from_black_alpha(if close.hovered() { 220 } else { 160 }),
+					);
+					crate::icons::paint(
+						ui.painter(),
+						crate::icons::Icon::Close,
+						egui::Rect::from_center_size(close_rect.center(), egui::Vec2::splat(14.0)),
+						STAGE_TEXT,
+					);
+					stop = close.clicked();
+					close.on_hover_text("Stop watching");
+				}
+				if response.clicked() && !stop {
+					open_stage = true;
+				}
+				response
+					.on_hover_cursor(egui::CursorIcon::PointingHand)
+					.on_hover_text("Return to the stream");
+			});
+		if stop {
+			self.watch_request = Some(None);
+		} else if open_stage {
+			// Reuses the preview Watch path: it focuses the stream and opens its channel.
+			self.stream_preview_watch = Some((channel, streamer));
+		}
 	}
 
 	/// Apply a tile's watch click once the stage has mutable state again.
@@ -2001,6 +2130,16 @@ impl MessagingUi {
 	pub(super) fn apply_voice_join(&mut self, state: &mut State, commands: &mut Vec<Command>) {
 		if let Some(channel) = self.voice_join.take() {
 			self.request_call(state, channel, false, commands);
+			// Clicking another voice channel moves you there at once, like Discord,
+			// instead of asking to switch calls.
+			if let Some(switch) = self.voice_switch.as_mut()
+				&& switch.channel == channel
+				&& switch.confirmed_at.is_none()
+				&& let Some(command) = state.leave_call()
+			{
+				switch.confirmed_at = Some(std::time::Instant::now());
+				commands.push(command);
+			}
 		}
 	}
 
@@ -2311,6 +2450,7 @@ impl MessagingUi {
 					ui,
 					&mut self.voice_gain.input_percent,
 					"voice-voice-popup-content-microphone-gain",
+					200,
 				);
 			} else {
 				device_combo(
@@ -2325,6 +2465,7 @@ impl MessagingUi {
 					ui,
 					&mut self.voice_gain.output_percent,
 					"voice-voice-popup-content-speaker-volume",
+					200,
 				);
 			}
 			ui.horizontal(|ui| {
@@ -2502,6 +2643,9 @@ impl MessagingUi {
 					"voice-voice-settings-content-install-a-voice-enabled-build-to-use-these-controls",
 				),
 			);
+		}
+		if !compact {
+			self.voice_unblock_card(ui);
 		}
 		ui.add_enabled_ui(!demo && self.voice_available, |ui| {
 			if compact {
@@ -3947,7 +4091,6 @@ impl MessagingUi {
 					|| state.demo || (self.screen.supported
 					&& matches!(phase, Phase::Connected | Phase::Waiting)
 					&& state.can_stream(channel_id));
-				let processing = !state.demo && self.voice_available;
 				let mut camera_clicked = false;
 				let mut share_clicked = false;
 				ui.horizontal(|ui| {
@@ -4012,32 +4155,29 @@ impl MessagingUi {
 						},
 					)
 					.clicked();
+					// Game activity on your profile, in place of Discord's noise suppression button;
+					// noise suppression stays in Voice & Video settings.
+					let sharing = self.share_game_activity;
 					if card_action(
 						ui,
 						width,
-						crate::icons::Icon::Soundboard,
-						processing,
-						self.voice_processing.effective().suppression != NoiseSuppression::Off,
-						if self.voice_processing.effective().suppression != NoiseSuppression::Off {
-							"Turn off noise suppression"
+						crate::icons::Icon::GameController,
+						true,
+						sharing,
+						if sharing {
+							"Hide game activity"
 						} else {
-							"Turn on noise suppression"
+							"Show game activity"
 						},
-						if processing {
-							"Noise suppression reduces keyboard noise, breathing and fans locally."
+						if sharing {
+							"Your profile shows the game you are playing. Click to hide it."
 						} else {
-							"Noise suppression is unavailable in this build or preview."
+							"Your profile does not show your game. Click to show it."
 						},
 					)
 					.clicked()
 					{
-						let enabled =
-							self.voice_processing.effective().suppression != NoiseSuppression::Off;
-						self.voice_processing.edit().suppression = if enabled {
-							NoiseSuppression::Off
-						} else {
-							NoiseSuppression::default()
-						};
+						self.share_game_activity = !sharing;
 					}
 				});
 				if camera_clicked && let Some(command) = state.set_call_camera(!camera) {
@@ -4716,19 +4856,20 @@ pub(super) fn participant_user(state: &State, channel: Id, user: Id) -> Option<&
 }
 
 /// Labelled percentage slider shared by the voice popout and the settings page.
-fn gain_slider(ui: &mut egui::Ui, value: &mut u16, title: &str) -> egui::Response {
+fn gain_slider(ui: &mut egui::Ui, value: &mut u16, title: &str, max: u16) -> egui::Response {
 	let title = crate::i18n::translate_if_key(title);
 	ui.scope(|ui| {
 		let colors = design::palette(ui);
 		ui.spacing_mut().item_spacing.y = 4.0;
 		let label = ui.label(RichText::new(title).size(13.0).color(colors.muted));
-		design::slider(ui, value, 0..=200, "%").labelled_by(label.id)
+		design::slider(ui, value, 0..=max, "%").labelled_by(label.id)
 	})
 	.inner
 }
 
 fn gain_controls(ui: &mut egui::Ui, gain: &mut crate::VoiceGain) -> [egui::Response; 2] {
-	let slider = gain_slider;
+	let slider =
+		|ui: &mut egui::Ui, value: &mut u16, title: &str| gain_slider(ui, value, title, 200);
 	if ui.available_width() >= 480.0 {
 		ui.columns(2, |columns| {
 			[
@@ -4776,6 +4917,30 @@ fn status_icon(ui: &mut egui::Ui, icon: crate::icons::Icon, color: egui::Color32
 }
 
 /// Discord's LIVE pill, sized for the channel list row rather than a stage tile.
+/// Seconds of hovering a live participant row before its stream card opens.
+const STREAM_CARD_DELAY: f64 = 0.12;
+
+/// True once the pointer has rested on the row briefly. Moving within the row keeps the
+/// timer, unlike tooltips, which restart whenever the pointer moves.
+fn stream_card_hovered(ui: &egui::Ui, row: &egui::Response) -> bool {
+	let id = row.id.with("stream-card-hover");
+	let ctx = ui.ctx();
+	let pressed = ctx.input(|input| input.pointer.any_down());
+	// A profile card or menu opened from the row takes precedence.
+	if !row.contains_pointer() || pressed || egui::Popup::is_any_open(ctx) {
+		ctx.data_mut(|data| data.remove::<f64>(id));
+		return false;
+	}
+	let now = ctx.input(|input| input.time);
+	let since = ctx.data_mut(|data| *data.get_temp_mut_or_insert_with(id, || now));
+	let waited = now - since;
+	if waited < STREAM_CARD_DELAY {
+		ctx.request_repaint_after_secs((STREAM_CARD_DELAY - waited) as f32);
+		return false;
+	}
+	true
+}
+
 fn live_badge(ui: &mut egui::Ui) {
 	let text = crate::i18n::translate("voice-live-badge-live");
 	let font_id = egui::FontId::new(9.0, design::medium_family(ui.ctx()));
@@ -5920,6 +6085,9 @@ mod tests {
 					stream_preview_watch: Some((Id(25), Id(3))),
 					..Default::default()
 				};
+				// Watching from elsewhere, such as a text channel, must open the stream.
+				state.selected = None;
+				messaging.voice_chat_open = true;
 				let mut commands = vec![];
 				messaging.apply_stream_preview_watch(&mut state, &mut commands);
 				assert!(messaging.stream_preview_watch.is_none());
@@ -5927,7 +6095,16 @@ mod tests {
 					state.voice.active.as_ref().unwrap().watching,
 					present.then_some(Id(3))
 				);
-				assert!(commands.is_empty());
+				assert!(
+					commands
+						.iter()
+						.all(|command| !matches!(command, Command::Voice(_)))
+				);
+				if present {
+					assert_eq!(state.selected, Some(Id(25)), "first Watch opens the stage");
+					assert!(!messaging.voice_chat_open);
+					assert_eq!(messaging.voice_focus, Some(StageFocus::Stream(Id(3))));
+				}
 				if !present {
 					assert_eq!(
 						state.status,

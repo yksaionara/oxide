@@ -238,6 +238,12 @@ fn rows<'a>(
 	)
 }
 
+/// Server rows Oxide can open. Kinds it cannot render (server hubs/directories and
+/// unknown future kinds) are left out instead of listed as unavailable links.
+fn listable(channel: &Channel) -> bool {
+	channel.guild.is_none() || matches!(channel.kind, 0..=5 | 10..=13 | 15 | 16)
+}
+
 fn now_ms() -> i64 {
 	std::time::SystemTime::now()
 		.duration_since(std::time::UNIX_EPOCH)
@@ -271,7 +277,10 @@ fn rows_at<'a>(
 	let category_ids: BTreeSet<_> = categories.iter().map(|c| c.id).collect();
 	let mut groups: BTreeMap<Option<Id>, Vec<&Channel>> = BTreeMap::new();
 	let admitted = |c: &Channel| {
-		scope.admits(c, state) && (show_hidden || state.can_view(c.id)) && !roster.lifted(c.id)
+		scope.admits(c, state)
+			&& (show_hidden || state.can_view(c.id))
+			&& !roster.lifted(c.id)
+			&& listable(c)
 	};
 	// Threads appear only beneath their parents, following Discord's relevance rules.
 	let mut threads = guild.map_or_else(BTreeMap::new, |guild| {
@@ -904,11 +913,18 @@ impl MessagingUi {
 									),
 								);
 								self.preload.conversation(&response, || Some(channel.id));
+								// One click joins, like Discord; clicking the channel you are
+								// already in only opens it.
 								if response.clicked() {
 									selected = Some(channel.id);
-								}
-								if response.double_clicked() {
-									self.voice_join = Some(channel.id);
+									if !state
+										.voice
+										.active
+										.as_ref()
+										.is_some_and(|call| call.channel == channel.id)
+									{
+										self.voice_join = Some(channel.id);
+									}
 								}
 								paint_shelf_rule(
 									ui,
@@ -1870,8 +1886,9 @@ mod tests {
 	}
 	#[test]
 	fn hidden_channels_are_opt_in() {
+		// Server hub/directory rows (kind 14) are never listed, hidden channels or not.
 		let state = State {
-			channels: vec![channel(1, 0, 0, None)],
+			channels: vec![channel(1, 0, 0, None), channel(2, 14, 1, None)],
 			..State::default()
 		};
 		assert!(!MessagingUi::default().show_hidden_channels);
@@ -2763,7 +2780,7 @@ mod tests {
 	}
 
 	#[test]
-	fn double_clicking_voice_row_joins_through_call_request() {
+	fn clicking_voice_row_joins_through_call_request() {
 		fn walk(shape: &egui::Shape, rows: &mut BTreeMap<String, egui::Pos2>) {
 			match shape {
 				egui::Shape::Text(text) => {
@@ -2838,29 +2855,30 @@ mod tests {
 			(picked, commands)
 		};
 
-		// A single click opens the channel without touching the call.
+		// Clicking the current call's channel only opens it.
+		let (picked, commands) = click(&mut view, &mut state, "Room 3,5", 1);
+		assert!(picked.is_some());
+		assert!(commands.is_empty() && view.voice_switch.is_none());
+
+		// From another call, one click leaves it at once and joins after, with no dialog.
 		let (picked, commands) = click(&mut view, &mut state, "Quiet room", 1);
 		assert_eq!(picked, Some(Id(26)));
-		assert!(commands.is_empty() && view.voice_switch.is_none());
-
-		// From another call, a double-click still waits for the switch confirmation.
-		let (picked, commands) = click(&mut view, &mut state, "Quiet room", 2);
-		assert_eq!(picked, Some(Id(26)));
-		assert!(commands.is_empty() && view.voice_switch.is_some());
+		assert_eq!(commands.len(), 1);
+		assert!(
+			view.voice_switch
+				.as_ref()
+				.is_some_and(|switch| switch.channel == Id(26) && switch.confirmed_at.is_some())
+		);
 		view.voice_switch = None;
-
-		// Double-clicking the current call's channel is a no-op.
-		let (_, commands) = click(&mut view, &mut state, "Room 3,5", 2);
-		assert!(commands.is_empty() && view.voice_switch.is_none());
 
 		// Unavailable voice never joins.
 		view.voice_available = false;
 		state.voice.active = None;
-		let (_, commands) = click(&mut view, &mut state, "Quiet room", 2);
+		let (_, commands) = click(&mut view, &mut state, "Quiet room", 1);
 		assert!(commands.is_empty() && view.voice_switch.is_none());
 
 		view.voice_available = true;
-		let (_, commands) = click(&mut view, &mut state, "Quiet room", 2);
+		let (_, commands) = click(&mut view, &mut state, "Quiet room", 1);
 		assert!(matches!(
 			commands.as_slice(),
 			[client_core::Command::Voice(

@@ -35,6 +35,22 @@ const INVISIBLE_WINDOW_REPAINT_INTERVAL: Duration = Duration::from_millis(100);
 /// See <https://github.com/emilk/egui/issues/5136>.
 const MISSED_REDRAW_TIMEOUT: Duration = Duration::from_millis(250);
 
+/// Shortest time between two paints of one window, in nanoseconds. Zero paints as often as asked.
+static MIN_REPAINT_INTERVAL: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+/// Limit how often a window repaints for input, animations and repaint requests.
+///
+/// Pointer motion and animations otherwise repaint at the display's refresh rate, which on a
+/// high refresh rate display runs the whole UI several hundred times per second. Repaints the
+/// operating system asks for (resizing, exposing) are never delayed. [`Duration::ZERO`], the
+/// default, removes the limit.
+pub fn set_min_repaint_interval(interval: Duration) {
+    MIN_REPAINT_INTERVAL.store(
+        u64::try_from(interval.as_nanos()).unwrap_or(u64::MAX),
+        core::sync::atomic::Ordering::Relaxed,
+    );
+}
+
 // ----------------------------------------------------------------------------
 fn create_event_loop(native_options: &mut epi::NativeOptions) -> Result<EventLoop<UserEvent>> {
     #[cfg(target_os = "android")]
@@ -92,6 +108,9 @@ struct WinitAppWrapper<T: WinitApp> {
     /// Windows we asked to redraw, and when to give up waiting for their `RedrawRequested`.
     windows_redraw_deadlines: HashMap<WindowId, Instant>,
 
+    /// When each window last started painting, for [`set_min_repaint_interval`].
+    windows_last_paint: HashMap<WindowId, Instant>,
+
     winit_app: T,
     return_result: Result<(), crate::Error>,
     run_and_return: bool,
@@ -102,9 +121,32 @@ impl<T: WinitApp> WinitAppWrapper<T> {
         Self {
             windows_next_repaint_times: HashMap::default(),
             windows_redraw_deadlines: HashMap::default(),
+            windows_last_paint: HashMap::default(),
             winit_app,
             return_result: Ok(()),
             run_and_return,
+        }
+    }
+
+    /// Postpone a repaint that would come sooner than [`set_min_repaint_interval`] allows.
+    fn throttle(&self, event_result: EventResult) -> EventResult {
+        let interval =
+            Duration::from_nanos(MIN_REPAINT_INTERVAL.load(core::sync::atomic::Ordering::Relaxed));
+        if interval.is_zero() {
+            return event_result;
+        }
+        let (window_id, when) = match event_result {
+            EventResult::RepaintNow(window_id) | EventResult::RepaintNext(window_id) => {
+                (window_id, Instant::now())
+            }
+            EventResult::RepaintAt(window_id, when) => (window_id, when),
+            _ => return event_result,
+        };
+        match self.windows_last_paint.get(&window_id) {
+            Some(last) if when < *last + interval => {
+                EventResult::RepaintAt(window_id, *last + interval)
+            }
+            _ => event_result,
         }
     }
 
@@ -118,7 +160,7 @@ impl<T: WinitApp> WinitAppWrapper<T> {
 
         log::trace!("event_result: {event_result:?}");
 
-        let mut event_result = event_result;
+        let mut event_result = event_result.map(|event_result| self.throttle(event_result));
 
         if cfg!(target_os = "windows")
             && let Ok(EventResult::RepaintNow(window_id)) = event_result
@@ -126,11 +168,13 @@ impl<T: WinitApp> WinitAppWrapper<T> {
             log::trace!("RepaintNow of {window_id:?}");
             self.windows_next_repaint_times
                 .insert(window_id, Instant::now());
+            self.windows_last_paint.insert(window_id, Instant::now());
 
             // Fix flickering on Windows, see https://github.com/emilk/egui/pull/2280
             event_result = self
                 .winit_app
-                .run_ui_and_paint(event_loop, window_id, PassMode::Full);
+                .run_ui_and_paint(event_loop, window_id, PassMode::Full)
+                .map(|event_result| self.throttle(event_result));
         }
 
         let combined_result = event_result.map(|event_result| match event_result {
@@ -419,6 +463,7 @@ impl<T: WinitApp> ApplicationHandler<UserEvent> for WinitAppWrapper<T> {
             let event_result = match event {
                 winit::event::WindowEvent::RedrawRequested => {
                     self.windows_redraw_deadlines.remove(&window_id);
+                    self.windows_last_paint.insert(window_id, Instant::now());
                     self.winit_app
                         .run_ui_and_paint(event_loop, window_id, PassMode::Full)
                 }

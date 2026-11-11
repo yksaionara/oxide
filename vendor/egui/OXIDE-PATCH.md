@@ -43,6 +43,7 @@ requests are squashed from the PR head that was reviewed; all of them are unmerg
 | 0023 | Oxide | `epaint`, `egui_system_font_provider` | Emoji-presentation clusters (🆕, or ♾ with U+FE0F) use a face that draws them in color instead of an earlier text font's plain glyph, and the system font provider asks for the emoji font first. Text presentation is unchanged. Fixes #913. |
 | 0024 | [#8698](https://github.com/emilk/egui/pull/8698) | `epaint`, `egui` | Right-to-left runs get one glyph per char instead of `2n - 1`, so editor cursors stay inside the text (End then Ctrl+ArrowLeft in Arabic text no longer overflows). Merged with 0009's direction override. |
 | 0025 | Oxide | `epaint` | Laying out a multi-paragraph job one paragraph at a time keeps an empty first section, which carries `Label`'s wrap indentation, so text continuing a line after an inline widget (a heading after a channel chip) is no longer painted over that line. |
+| 0026 | Oxide | `eframe` | `eframe::set_min_repaint_interval` postpones repaints for input, animations and repaint requests until that long after the window last started painting; operating-system redraws are not delayed. Zero (the default) is upstream behavior. Oxide sets it from the Frame rate limit setting, so a 240 or 360 Hz display no longer runs the whole UI every refresh. |
 
 ## Oxide patch: RTL shaping metadata
 

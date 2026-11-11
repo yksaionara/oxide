@@ -377,6 +377,8 @@ pub struct MessagingUi {
 	/// Device preference: repaint every display refresh while focused, so variable refresh rate
 	/// displays hold one rate instead of flickering.
 	pub steady_refresh_rate: bool,
+	/// Device preference: most frames per second drawn for input and animations.
+	pub frame_rate_limit: model::FrameRateLimit,
 	/// Adapter currently in use, shown next to the preference for bug reports.
 	pub gpu_adapter: String,
 	pub reading_status: &'static str,
@@ -6024,6 +6026,7 @@ impl MessagingUi {
 		if self.setup_pending {
 			self.show_setup(&ctx);
 		}
+		self.stream_mini_player(&ctx, state);
 		self.scroll.clear_if_unbound(&ctx);
 		self.scroll.paint(&ctx);
 		// Clear the title bar and channel header so a notice never sits on the chrome.

@@ -22,6 +22,8 @@ pub fn setup(
 	let environment = wgpu::Backends::from_env();
 	let (backends, preferred) =
 		backend_policy(api, environment, wgpu::Instance::enabled_backend_features());
+	#[cfg(target_os = "windows")]
+	let backends = without_idle_opengl(backends, environment, preferred);
 	if api != GraphicsApi::Automatic && environment.is_none() && preferred.is_none() {
 		eprintln!(
 			"[Oxide] Preferred graphics API {} is unsupported by this build; using Automatic",
@@ -102,10 +104,56 @@ fn selection_rank(
 	)
 }
 
+/// Direct3D 12 texture heaps grow from 8 to 16 MiB and upload heaps from 4 to 8 MiB.
+const DX12_BLOCKS: std::ops::Range<u64> = 8 * 1024 * 1024..16 * 1024 * 1024;
+
 fn configure_memory(backend: wgpu::Backend, descriptor: &mut wgpu::DeviceDescriptor<'_>) {
 	if backend == wgpu::Backend::Dx12 {
-		// Smaller allocation blocks, not a cap on texture sizes or total memory.
-		descriptor.memory_hints = wgpu::MemoryHints::MemoryUsage;
+		// Smaller allocation blocks, not a cap on texture sizes or total memory. wgpu's
+		// `MemoryUsage` preset still doubles upload heaps to 32 MiB each; a chat window's
+		// per-frame staging data kept about 130 MiB of them committed and almost untouched.
+		// Larger resources get their own allocation, which is released with the resource.
+		descriptor.memory_hints = wgpu::MemoryHints::Manual {
+			suballocated_device_memory_block_size: DX12_BLOCKS,
+		};
+	}
+}
+
+/// Drop the OpenGL fallback from the candidates when Direct3D 12 has a hardware adapter.
+///
+/// Creating the instance with OpenGL enabled loads the vendor's OpenGL driver and makes a
+/// context only to list an adapter that is never chosen: about 40 MiB of private memory and
+/// three driver threads on a discrete GPU. OpenGL stays for an explicit preference and for
+/// hardware whose only Direct3D 12 adapter is the software rasterizer.
+#[cfg(target_os = "windows")]
+fn without_idle_opengl(
+	backends: wgpu::Backends,
+	environment: Option<wgpu::Backends>,
+	preferred: Option<wgpu::Backend>,
+) -> wgpu::Backends {
+	if environment.is_some()
+		|| preferred.is_some_and(|backend| backend != wgpu::Backend::Dx12)
+		|| !backends.contains(wgpu::Backends::DX12 | wgpu::Backends::GL)
+	{
+		return backends;
+	}
+	let mut descriptor =
+		eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle().instance_descriptor;
+	descriptor.backends = wgpu::Backends::DX12;
+	let instance = wgpu::Instance::new(descriptor);
+	// Native adapter enumeration completes without waiting; an unready future keeps OpenGL.
+	let mut listing = std::pin::pin!(instance.enumerate_adapters(wgpu::Backends::DX12));
+	let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+	let std::task::Poll::Ready(adapters) = listing.as_mut().poll(&mut context) else {
+		return backends;
+	};
+	if adapters
+		.iter()
+		.any(|adapter| !software(&adapter.get_info()))
+	{
+		backends - wgpu::Backends::GL
+	} else {
+		backends
 	}
 }
 
@@ -271,7 +319,8 @@ mod tests {
 			if backend == wgpu::Backend::Dx12 {
 				assert!(matches!(
 					descriptor.memory_hints,
-					wgpu::MemoryHints::MemoryUsage
+					wgpu::MemoryHints::Manual { suballocated_device_memory_block_size }
+						if suballocated_device_memory_block_size == DX12_BLOCKS
 				));
 			} else {
 				assert!(matches!(

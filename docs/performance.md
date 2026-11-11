@@ -4,6 +4,38 @@ Recent synthetic/offline measurements are workload-specific. They do not establi
 performance, universal device results or application-wide memory bounds. The raw PR screenshot,
 log and per-run evidence archive has been removed; the summaries below retain the useful results.
 
+## Frame rate limit and Direct3D 12 memory — November 10, 2026
+
+Windows 11, Ryzen 7 9800X3D, RTX 5070 Ti, 2560×1440 at 360 Hz, release profile with
+`--no-default-features`. One signed-in owner session on Friends Online, maximized and focused;
+a script moved the pointer over the window for two 8 s windows. One run per build, so small
+differences are noise; nothing was sent to Discord.
+
+| Metric | `c65a675` | This change |
+| --- | ---: | ---: |
+| CPU while the pointer moves (share of one core) | 40.7%, 43.3% | 8.8%, 6.4% |
+| GPU 3D engine while the pointer moves | 2.5–4.5% | 0.6% |
+| Working set, idle after start / after the sweeps | 188 / 236 MiB | 160 / 206 MiB |
+| Private bytes, idle after start / after the sweeps | 307 / 358 MiB | 252 / 297 MiB |
+| GPU memory committed | 211.5 MiB | 184.9 MiB |
+
+Idle CPU was 0% in both. Three changes:
+
+- **Frame rate limit** (Settings › General, default 60 FPS; 30/120/144/240/display). Pointer
+  motion and animations repainted every display refresh, so a 360 Hz display ran the whole
+  immediate-mode UI up to 360 times per second. `eframe::set_min_repaint_interval` (vendored
+  patch 0026) postpones such repaints; operating-system redraws are not delayed, and Steady
+  refresh rate turns the limit off.
+- **No idle OpenGL driver on Windows.** With a hardware Direct3D 12 adapter the OpenGL fallback
+  is no longer a candidate, so the vendor OpenGL driver is not loaded. `WGPU_BACKEND`, a saved
+  non-DirectX API and software-only Direct3D 12 keep the previous candidates.
+- **Direct3D 12 allocator blocks** of 8–16 MiB (4–8 MiB upload) instead of wgpu's
+  `MemoryUsage` 8–64 MiB (4–32 MiB).
+
+Per-change attribution of the memory rows, voice, video, long sessions, other GPUs and other
+platforms are unmeasured. An earlier `WGPU_BACKEND=dx12` launch of `c65a675` alone showed
+159 MiB working set and 265 MiB private bytes at idle.
+
 ## Discord message toolbar and safe extension ports — November 8, 2026
 
 Baseline `21f8870b` and this branch were built with pinned Rust 1.98.1 and locked dependencies on
