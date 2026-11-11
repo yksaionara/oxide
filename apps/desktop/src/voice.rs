@@ -325,6 +325,48 @@ const REJOIN_DELAYS: [Duration; voice::MAX_REJOIN_ATTEMPTS as usize] = [
 const REJOIN_STABLE: Duration = Duration::from_secs(30);
 /// How long a rejoin waits for Discord to confirm that this account left the channel.
 const REJOIN_DEPARTURE_TIMEOUT: Duration = Duration::from_secs(5);
+/// How often the device list is rescanned while the picker is open or a call is live.
+const DEVICE_RESCAN: Duration = Duration::from_secs(3);
+
+/// Windows can register a reconnected device as a new endpoint whose name gains or loses an
+/// index ("Microphone (2- Headset)"). When the selected ID vanished from a fresh scan, move
+/// the selection to the one new device with the same name; otherwise leave it, and the audio
+/// engine uses the system default until the selected device returns.
+fn follow_renamed_device(
+	selected: &mut Option<String>,
+	remembered: &mut Option<(String, String)>,
+	current: &[(String, String)],
+) {
+	fn base(name: &str) -> String {
+		let Some((head, tail)) = name.split_once('(') else {
+			return name.to_owned();
+		};
+		let digits = tail.bytes().take_while(u8::is_ascii_digit).count();
+		match tail[digits..].strip_prefix("- ") {
+			Some(rest) if digits > 0 => format!("{head}({rest}"),
+			_ => name.to_owned(),
+		}
+	}
+	let Some(id) = selected.as_deref() else {
+		return;
+	};
+	if let Some(entry) = current.iter().find(|(candidate, _)| candidate == id) {
+		*remembered = Some(entry.clone());
+		return;
+	}
+	let Some((_, name)) = remembered.as_ref().filter(|(known, _)| known == id) else {
+		return;
+	};
+	let name = base(name);
+	let mut matches = current
+		.iter()
+		.filter(|(_, candidate)| base(candidate) == name);
+	if let (Some(entry), None) = (matches.next(), matches.next()) {
+		*selected = Some(entry.0.clone());
+		*remembered = Some(entry.clone());
+	}
+}
+
 /// Shown while a live call has no audio device; the call itself stays connected.
 const AUDIO_UNAVAILABLE: &str =
 	"Audio devices are unavailable; the call stays connected while they come back";
@@ -365,6 +407,10 @@ pub struct Voice {
 	live: Option<Live>,
 	retiring: Option<mpsc::Receiver<()>>,
 	device_scan: Option<mpsc::Receiver<Result<discord_voice::audio::DeviceList, &'static str>>>,
+	/// Background rescans while the picker is open or a call is live; `None` scans at once.
+	next_device_scan: Option<Instant>,
+	/// Last seen ID and name of the selected microphone and speaker, kept while they are absent.
+	remembered_devices: [Option<(String, String)>; 2],
 	camera_scan: Option<mpsc::Receiver<Result<discord_voice::camera::DeviceList, &'static str>>>,
 	/// Remote camera textures behind `ui.voice_remote_video`, by user.
 	remote_textures: Vec<(Id, crate::gpu_video::VideoTexture)>,
@@ -919,6 +965,24 @@ impl Voice {
 		ui.voice_speaking.clear();
 		ui.voice_microphone_unavailable = false;
 		self.poll_camera_devices(state.demo, ui, ctx);
+		// Follow hotplugged devices quietly, without the "looking" status of an explicit refresh.
+		let background = (std::mem::take(&mut ui.voice_devices_shown) || self.live.is_some())
+			&& self.next_device_scan.is_none_or(|at| Instant::now() >= at);
+		if background && !ui.voice_refresh_devices && !state.demo && self.device_scan.is_none() {
+			self.next_device_scan = Some(Instant::now() + DEVICE_RESCAN);
+			let (send, receive) = mpsc::sync_channel(1);
+			let wake = ctx.clone();
+			if std::thread::Builder::new()
+				.name("audio-devices".into())
+				.spawn(move || {
+					let _ = send.send(discord_voice::audio::devices());
+					wake.request_repaint();
+				})
+				.is_ok()
+			{
+				self.device_scan = Some(receive);
+			}
+		}
 		if ui.voice_refresh_devices {
 			ui.voice_refresh_devices = false;
 			if !state.demo && self.device_scan.is_none() {
@@ -941,6 +1005,10 @@ impl Voice {
 		if let Some(scan) = &self.device_scan {
 			match scan.try_recv() {
 				Ok(Ok(devices)) => {
+					// A replugged headset can return under a new endpoint ID; keep it selected.
+					let [input, output] = &mut self.remembered_devices;
+					follow_renamed_device(&mut ui.voice_input, input, &devices.inputs);
+					follow_renamed_device(&mut ui.voice_output, output, &devices.outputs);
 					ui.voice_inputs = devices.inputs;
 					ui.voice_outputs = devices.outputs;
 					ui.voice_device_status = ui::VOICE_DEVICES_LOADED;
@@ -2116,6 +2184,46 @@ pub fn takeover_notice(state: &State, event: &Event) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn replugged_device_with_a_new_endpoint_id_stays_selected() {
+		let device = |id: &str, name: &str| (id.to_owned(), name.to_owned());
+		let headset = device("{old}", "Microphone (BlackShark V3 Pro PS - Chat)");
+		let built_in = device("{mic}", "Microphone (Realtek)");
+		let mut selected = Some("{old}".to_owned());
+		let mut remembered = None;
+		follow_renamed_device(&mut selected, &mut remembered, &[built_in.clone(), headset]);
+		// Unplugged: nothing to follow yet, and the selection is kept for its return.
+		follow_renamed_device(
+			&mut selected,
+			&mut remembered,
+			std::slice::from_ref(&built_in),
+		);
+		assert_eq!(selected.as_deref(), Some("{old}"));
+		// Back under a new ID and an indexed name.
+		let returned = device("{new}", "Microphone (2- BlackShark V3 Pro PS - Chat)");
+		follow_renamed_device(
+			&mut selected,
+			&mut remembered,
+			&[built_in.clone(), returned],
+		);
+		assert_eq!(selected.as_deref(), Some("{new}"));
+		// And again, from the indexed name back to the plain one.
+		let again = device("{third}", "Microphone (BlackShark V3 Pro PS - Chat)");
+		follow_renamed_device(&mut selected, &mut remembered, &[again]);
+		assert_eq!(selected.as_deref(), Some("{third}"));
+		// Two equally named candidates are ambiguous: keep the selection, use the default.
+		let twins = [
+			device("{a}", "Microphone (2- BlackShark V3 Pro PS - Chat)"),
+			device("{b}", "Microphone (3- BlackShark V3 Pro PS - Chat)"),
+		];
+		follow_renamed_device(&mut selected, &mut remembered, &twins);
+		assert_eq!(selected.as_deref(), Some("{third}"));
+		// A different device that merely shares the product name is not the same endpoint.
+		let usb = device("{usb}", "Microphone (BlackShark V3 Pro PS USB - Chat)");
+		follow_renamed_device(&mut selected, &mut remembered, &[usb]);
+		assert_eq!(selected.as_deref(), Some("{third}"));
+	}
 
 	#[test]
 	fn call_cues_track_joins_and_departures_without_reconnect_noise() {

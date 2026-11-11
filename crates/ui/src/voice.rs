@@ -2283,6 +2283,12 @@ impl MessagingUi {
 				self.voice_refresh_devices = true;
 				ui.ctx().request_repaint();
 			}
+			if ui.is_enabled() {
+				// Plugged or unplugged devices show up without pressing Refresh.
+				self.voice_devices_shown = true;
+				ui.ctx()
+					.request_repaint_after(std::time::Duration::from_secs(3));
+			}
 			let label = ui.label(design::medium(
 				ui,
 				crate::i18n::translate_if_key(if input {
