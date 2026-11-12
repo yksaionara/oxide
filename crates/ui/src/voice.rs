@@ -1402,16 +1402,32 @@ impl MessagingUi {
 	) -> egui::Rect {
 		let name = participant_user(state, channel, streamer)
 			.map_or_else(|| "Participant".to_owned(), |user| user.name.clone());
-		let content = match &self.voice_stream_view {
+		let content = match self.voice_stream_view {
 			Some(texture) => {
 				let content = fit_rect(rect, texture.size);
+				// Strip-sized tiles stay whole; zooming is for a share someone is reading.
+				let zoomable = content.height() >= ZOOM_MIN_HEIGHT;
+				if zoomable {
+					self.zoom_stream(ui, content);
+				}
+				let uv = if zoomable {
+					self.voice_stream_zoom.uv()
+				} else {
+					StreamZoom::default().uv()
+				};
 				ui.put(
 					content,
-					egui::Image::from_texture((texture.id, content.size())).corner_radius(8),
+					egui::Image::from_texture((texture.id, content.size()))
+						.uv(uv)
+						.corner_radius(8),
 				);
+				if zoomable && self.voice_stream_zoom.zoomed() {
+					self.zoom_badge(ui, content);
+				}
 				content
 			}
 			None => {
+				self.voice_stream_zoom = StreamZoom::default();
 				ui.painter().rect_filled(rect, 8, TILE_FILL);
 				if rect.height() >= 132.0 {
 					let status = if self.voice_stream_status.is_empty() {
@@ -1450,6 +1466,69 @@ impl MessagingUi {
 			self.stream_overlay_controls(ui, content);
 		}
 		content
+	}
+
+	/// Scroll or pinch over the share to magnify the point under the pointer; drag to move
+	/// around once magnified.
+	fn zoom_stream(&mut self, ui: &egui::Ui, content: egui::Rect) {
+		if !ui.rect_contains_pointer(content) || egui::Popup::is_any_open(ui.ctx()) {
+			return;
+		}
+		let (scroll, pinch, pointer, dragging, moved) = ui.input_mut(|input| {
+			(
+				// Taken, so an enclosing scroll area does not also move.
+				std::mem::take(&mut input.smooth_scroll_delta).y,
+				input.zoom_delta(),
+				input.pointer.hover_pos(),
+				input.pointer.primary_down() && input.pointer.is_decidedly_dragging(),
+				input.pointer.delta(),
+			)
+		});
+		let factor = (scroll / 240.0).exp() * pinch;
+		if factor != 1.0
+			&& let Some(pointer) = pointer
+		{
+			self.voice_stream_zoom
+				.zoom(factor, (pointer - content.min) / content.size());
+		}
+		if self.voice_stream_zoom.zoomed() {
+			if dragging {
+				self.voice_stream_zoom.pan(moved / content.size());
+			}
+			ui.ctx().set_cursor_icon(if dragging {
+				egui::CursorIcon::Grabbing
+			} else {
+				egui::CursorIcon::Grab
+			});
+		}
+	}
+
+	/// Top-right magnification readout over a zoomed share; a click shows the whole picture.
+	fn zoom_badge(&mut self, ui: &mut egui::Ui, content: egui::Rect) {
+		let label = format!("{:.1}× · Reset zoom", self.voice_stream_zoom.scale);
+		let font = egui::FontId::new(13.0, design::medium_family(ui.ctx()));
+		let width = ui
+			.painter()
+			.layout_no_wrap(label.clone(), font.clone(), egui::Color32::WHITE)
+			.size()
+			.x + 24.0;
+		let rect = egui::Rect::from_min_size(
+			content.right_top() + egui::vec2(-width - 12.0, 12.0),
+			egui::vec2(width, 30.0),
+		);
+		let button = ui.put(
+			rect,
+			egui::Button::new(
+				egui::RichText::new(label)
+					.font(font)
+					.color(egui::Color32::WHITE),
+			)
+			.fill(egui::Color32::from_black_alpha(180))
+			.corner_radius(8),
+		);
+		if button.clicked() {
+			self.voice_stream_zoom = StreamZoom::default();
+		}
 	}
 
 	/// Bottom-right actions over a fullscreen share: stream audio and Stop watching.
@@ -4282,6 +4361,62 @@ const HANG_UP: f32 = 64.0;
 const BAR_GAP: f32 = 12.0;
 
 /// Green ring like Discord's speaking indicator; the accessible label still names the state.
+/// Smallest picture height that zooms; smaller tiles are thumbnails.
+const ZOOM_MIN_HEIGHT: f32 = 240.0;
+/// Most a watched share is magnified.
+const ZOOM_MAX: f32 = 8.0;
+
+/// The part of a watched share on screen: a magnification and the picture point at its
+/// centre, both in picture fractions so they survive tile and window resizes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct StreamZoom {
+	scale: f32,
+	center: egui::Pos2,
+}
+impl Default for StreamZoom {
+	fn default() -> Self {
+		Self {
+			scale: 1.0,
+			center: egui::pos2(0.5, 0.5),
+		}
+	}
+}
+impl StreamZoom {
+	fn zoomed(self) -> bool {
+		self.scale > 1.0
+	}
+
+	/// Texture coordinates of the visible part.
+	fn uv(self) -> egui::Rect {
+		egui::Rect::from_center_size(self.center, egui::Vec2::splat(1.0 / self.scale))
+	}
+
+	/// Magnify by `factor`, keeping the picture point under `anchor` (a fraction of the
+	/// shown tile, from its top left) exactly where it is.
+	fn zoom(&mut self, factor: f32, anchor: egui::Vec2) {
+		let before = self.uv();
+		let point = before.min + anchor * before.size();
+		self.scale = (self.scale * factor).clamp(1.0, ZOOM_MAX);
+		let size = egui::Vec2::splat(1.0 / self.scale);
+		self.center = point - anchor * size + size / 2.0;
+		self.keep_inside();
+	}
+
+	/// Move the picture by `moved`, a fraction of the shown tile.
+	fn pan(&mut self, moved: egui::Vec2) {
+		self.center -= moved / self.scale;
+		self.keep_inside();
+	}
+
+	/// The view never leaves the picture, so no edge shows empty space.
+	fn keep_inside(&mut self) {
+		let half = 0.5 / self.scale;
+		self.center = self
+			.center
+			.clamp(egui::pos2(half, half), egui::pos2(1.0 - half, 1.0 - half));
+	}
+}
+
 /// Which stage tile is enlarged; cleared automatically when it stops showing video.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StageFocus {
@@ -5016,6 +5151,28 @@ fn device_combo(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn stream_zoom_holds_the_pointed_spot_and_stays_inside_the_picture() {
+		let mut zoom = StreamZoom::default();
+		// Zooming at a point three quarters across keeps that picture point under the pointer.
+		let anchor = egui::vec2(0.75, 0.25);
+		zoom.zoom(2.0, anchor);
+		let view = zoom.uv();
+		let under_pointer = view.min + anchor * view.size();
+		assert!((under_pointer - egui::pos2(0.75, 0.25)).length() < 1e-5);
+		// Zooming into a corner and dragging far past the edge never shows outside the picture.
+		zoom.zoom(100.0, egui::vec2(1.0, 1.0));
+		zoom.pan(egui::vec2(-50.0, -50.0));
+		let view = zoom.uv();
+		assert!((view.width() - 1.0 / ZOOM_MAX).abs() < 1e-6);
+		assert!(view.min.x >= -1e-6 && view.max.x <= 1.0 + 1e-6);
+		assert!((view.max - egui::pos2(1.0, 1.0)).length() < 1e-5);
+		// Zooming all the way out from anywhere returns the whole picture.
+		zoom.zoom(0.001, egui::vec2(0.1, 0.9));
+		assert!(!zoom.zoomed());
+		assert!((zoom.uv().min.to_vec2()).length() < 1e-6);
+	}
 
 	#[test]
 	fn explicit_join_audio_waits_for_call_switch_and_survives_teardown() {

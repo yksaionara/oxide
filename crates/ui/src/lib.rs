@@ -492,6 +492,9 @@ pub struct MessagingUi {
 	/// Session-only stream playback level; unset is 100%. Mute preserves the level.
 	voice_stream_volume: Option<u16>,
 	voice_stream_muted: bool,
+	/// How far the watched share is magnified and where; back to the whole picture when the
+	/// stream ends.
+	voice_stream_zoom: voice::StreamZoom,
 	/// Enlarged stage tile; cleared when it stops showing video or on Escape.
 	pub voice_focus: Option<voice::StageFocus>,
 	/// Screen share currently owning the client surface, its prior window mode and focus target.
