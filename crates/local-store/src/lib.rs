@@ -85,6 +85,8 @@ pub struct AppPreferences {
 	pub steady_refresh_rate: bool,
 	/// Cap on frames drawn for input and animations; older preferences take the 60 fps default.
 	pub frame_rate_limit: model::FrameRateLimit,
+	/// Last chosen screen-share frame rate and resolution; older preferences take the defaults.
+	pub screen_share: model::ScreenShareQuality,
 	/// Device-local, account-independent keyboard bindings.
 	pub keybinds: model::Keybinds,
 	/// Expanded server folders, bounded so one device preference stays small.
@@ -144,6 +146,7 @@ impl Default for AppPreferences {
 			graphics_api: Default::default(),
 			steady_refresh_rate: false,
 			frame_rate_limit: Default::default(),
+			screen_share: Default::default(),
 			keybinds: Default::default(),
 			expanded_folders: Vec::new(),
 			user_volumes: Vec::new(),
@@ -182,6 +185,7 @@ impl AppPreferences {
 				.all(|(_, volume)| *volume <= model::voice_settings::MAX_USER_VOLUME)
 			&& self.muted_users.len() <= 64
 			&& self.keybinds.is_valid()
+			&& self.screen_share.is_valid()
 			&& self.image_cache.is_valid()
 			&& [&self.voice_input, &self.voice_output]
 				.into_iter()
@@ -2278,6 +2282,10 @@ mod tests {
 			graphics_api: model::GraphicsApi::OpenGl,
 			steady_refresh_rate: true,
 			frame_rate_limit: model::FrameRateLimit::Display,
+			screen_share: model::ScreenShareQuality {
+				fps: 240,
+				height: Some(1440),
+			},
 			..Default::default()
 		};
 		store.save_app_preferences(&value).unwrap();

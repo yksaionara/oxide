@@ -20,7 +20,7 @@ pub mod forum;
 pub mod gifs;
 mod graphics;
 pub mod threads;
-pub use graphics::{FrameRateLimit, GpuPreference, GraphicsApi};
+pub use graphics::{FrameRateLimit, GpuPreference, GraphicsApi, ScreenShareQuality};
 mod time_format;
 pub use time_format::TimeFormat;
 pub mod guild_folders;

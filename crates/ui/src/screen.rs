@@ -29,10 +29,9 @@ pub struct ScreenUi {
 	pub preview: Option<egui::TextureHandle>,
 	/// The share is running and the local picture is intentionally not updating.
 	pub preview_paused: bool,
-	resolution: Resolution,
-	/// Selection the current resolution was chosen for. `None` until sources arrive.
-	quality_for: Option<SourceId>,
-	fps: u32,
+	/// The frame rate and resolution the person last chose, saved with device preferences.
+	/// A source that cannot reach them shares at the nearest offer without changing them.
+	pub quality: model::ScreenShareQuality,
 	audio: bool,
 }
 impl Default for ScreenUi {
@@ -50,9 +49,7 @@ impl Default for ScreenUi {
 			supported: false,
 			preview: None,
 			preview_paused: false,
-			resolution: Resolution::Source,
-			quality_for: None,
-			fps: 30,
+			quality: model::ScreenShareQuality::default(),
 			audio: cfg!(target_os = "macos"),
 		}
 	}
@@ -69,7 +66,6 @@ impl ScreenUi {
 		self.context = Some((state.generation, call.channel, call.request));
 		self.open = true;
 		self.selected = None;
-		self.quality_for = None;
 		self.sources.clear();
 		if state.demo {
 			self.sources = if cfg!(target_os = "macos") {
@@ -117,37 +113,36 @@ impl ScreenUi {
 		})
 	}
 
-	fn align_quality(&mut self) {
-		let (width, height, refresh) = self.geometry();
+	/// The remembered resolution when the selected source offers it, else the default.
+	fn resolution(&self) -> Option<Resolution> {
+		let (width, height, _) = self.geometry();
 		let offered: Vec<_> = offered_resolutions(width, height).collect();
-		if offered.is_empty() {
-			return;
-		}
-		if self.quality_for.is_none() && self.quality_for != self.selected {
-			self.resolution = preferred_resolution(&offered);
-		}
-		self.quality_for = self.selected;
-		if !offered.contains(&self.resolution) {
-			self.resolution = preferred_resolution(&offered);
-		}
-		let rates: Vec<_> = offered_frame_rates(refresh).collect();
-		if !rates.contains(&self.fps) {
-			self.fps = rates
-				.into_iter()
-				.rev()
-				.find(|fps| *fps <= self.fps)
-				.unwrap_or(30);
-		}
+		let wanted = self.quality.height.and_then(|wanted| {
+			offered.iter().copied().find(|item| match item {
+				Resolution::Source => wanted == 0,
+				Resolution::Preset { height, .. } => *height == wanted,
+			})
+		});
+		wanted.or_else(|| (!offered.is_empty()).then(|| preferred_resolution(&offered)))
+	}
+
+	/// The remembered frame rate, or the fastest slower one the selected source offers.
+	fn fps(&self) -> u32 {
+		let (_, _, refresh) = self.geometry();
+		offered_frame_rates(refresh)
+			.filter(|fps| *fps <= self.quality.fps)
+			.last()
+			.unwrap_or(30)
 	}
 
 	fn settings(&self) -> Option<Settings> {
 		let source = self.selected_source()?;
-		let (width, height) = picture(self.resolution, source.width, source.height)?;
+		let (width, height) = picture(self.resolution()?, source.width, source.height)?;
 		let settings = Settings {
 			source: source.id,
 			width,
 			height,
-			fps: self.fps,
+			fps: self.fps(),
 			// The pointer is always part of the shared video.
 			cursor: true,
 			audio: self.audio,
@@ -166,7 +161,6 @@ impl ScreenUi {
 			self.open = false;
 			self.sources.clear();
 			self.selected = None;
-			self.quality_for = None;
 			self.request = None;
 			self.refresh_requested = false;
 		}
@@ -236,7 +230,6 @@ impl ScreenUi {
 					.clicked()
 				{
 					self.selected = None;
-					self.quality_for = None;
 					self.sources.clear();
 					self.refresh_requested = true;
 					self.status = "Looking for screens and windows…".into();
@@ -248,8 +241,8 @@ impl ScreenUi {
 			.id_salt("screen-sources")
 			.max_height(196.0)
 			.show(ui, |ui| self.source_list(ui));
-		self.align_quality();
 		let (width, height, refresh) = self.geometry();
+		let (resolution, fps) = (self.resolution(), self.fps());
 		ui.add_space(14.0);
 		ui.label(crate::design::eyebrow(
 			ui,
@@ -259,13 +252,16 @@ impl ScreenUi {
 		ui.add_space(6.0);
 		ui.horizontal_wrapped(|ui| {
 			ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
-			for resolution in offered_resolutions(width, height) {
-				let label = match resolution {
+			for item in offered_resolutions(width, height) {
+				let label = match item {
 					Resolution::Source => "screen-body-source".to_owned(),
 					Resolution::Preset { height, .. } => format!("{height}p"),
 				};
-				if segment(ui, &label, self.resolution == resolution).clicked() {
-					self.resolution = resolution;
+				if segment(ui, &label, resolution == Some(item)).clicked() {
+					self.quality.height = Some(match item {
+						Resolution::Source => 0,
+						Resolution::Preset { height, .. } => height,
+					});
 				}
 			}
 		});
@@ -278,9 +274,9 @@ impl ScreenUi {
 		ui.add_space(6.0);
 		ui.horizontal_wrapped(|ui| {
 			ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
-			for fps in offered_frame_rates(refresh) {
-				if segment(ui, &format!("{fps} fps"), self.fps == fps).clicked() {
-					self.fps = fps;
+			for rate in offered_frame_rates(refresh) {
+				if segment(ui, &format!("{rate} fps"), fps == rate).clicked() {
+					self.quality.fps = rate;
 				}
 			}
 		});
@@ -529,5 +525,36 @@ mod tests {
 		assert!(picker.settings().is_some());
 		picker.sources.clear();
 		assert!(picker.settings().is_none());
+	}
+
+	#[test]
+	fn chosen_quality_survives_reopening_and_slower_sources() {
+		let source = |id, width, height, refresh_hz| Source {
+			id: SourceId::Display(id),
+			name: "Synthetic display".into(),
+			width,
+			height,
+			refresh_hz,
+		};
+		let mut picker = ScreenUi {
+			quality: model::ScreenShareQuality {
+				fps: 240,
+				height: Some(1440),
+			},
+			..Default::default()
+		};
+		// Reopening shows no source until discovery answers; that must not lower the choice.
+		assert_eq!(picker.fps(), 60);
+		assert_eq!(picker.quality.fps, 240);
+		picker.sources = vec![source(1, 2560, 1440, 240), source(2, 1920, 1080, 60)];
+		picker.selected = Some(SourceId::Display(1));
+		let settings = picker.settings().unwrap();
+		assert_eq!((settings.fps, settings.height), (240, 1440));
+		// A slower, smaller display shares at what it can do and keeps the choice for later.
+		picker.selected = Some(SourceId::Display(2));
+		let settings = picker.settings().unwrap();
+		assert_eq!((settings.fps, settings.height), (60, 1080));
+		picker.selected = Some(SourceId::Display(1));
+		assert_eq!(picker.settings().unwrap().fps, 240);
 	}
 }
