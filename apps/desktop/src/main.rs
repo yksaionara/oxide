@@ -6010,7 +6010,10 @@ impl eframe::App for Desktop {
 		// change swings them between their limits and flickers (#889). The opt-in steady rate asks
 		// for the next frame within half a refresh: a Fifo present blocks until the next refresh
 		// anyway, and a surface that stops blocking (locked or occluded) cannot spin a core.
-		eframe::set_min_repaint_interval(if self.messaging.steady_refresh_rate {
+		// A watched stream wakes the window once per decoded picture, so its own frame rate is
+		// the limit: capping it at the 60 fps default would show a 240 fps share at 60.
+		let watching = self.messaging.voice_stream_view.is_some();
+		eframe::set_min_repaint_interval(if self.messaging.steady_refresh_rate || watching {
 			Duration::ZERO
 		} else {
 			self.messaging.frame_rate_limit.interval()

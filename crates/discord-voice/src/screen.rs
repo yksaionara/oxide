@@ -262,7 +262,7 @@ impl Worker {
 		self.done.as_ref()?.try_recv().ok()
 	}
 
-	/// One local RGBA image at the captured size, replaced at the chosen frame rate while visible.
+	/// One local RGBA image at the captured size, replaced up to 30 times a second while visible.
 	pub fn take_preview(&self) -> Option<image::RgbaImage> {
 		self.preview.try_lock().ok()?.take()
 	}
@@ -279,6 +279,10 @@ impl Drop for Worker {
 		self.stop.store(true, Ordering::Release);
 	}
 }
+
+/// Shortest time between two local preview pictures: 30 a second.
+#[cfg(not(target_os = "linux"))]
+const PREVIEW_INTERVAL: Duration = Duration::from_millis(33);
 
 /// Captures, encodes and sends frames until the share stops or capture fails. A failure's
 /// reason is owned so it can carry the Windows error code of a failed audio capture.
@@ -333,6 +337,7 @@ fn encode_loop(
 	let mut next_frame = Instant::now();
 	let mut latest_frame = None;
 	let mut preview_shown = preview_visible.load(Ordering::Acquire);
+	let mut next_preview = Instant::now();
 
 	while !stop.load(Ordering::Acquire) && !send.is_closed() {
 		#[cfg(target_os = "windows")]
@@ -376,7 +381,10 @@ fn encode_loop(
 				if let Ok(mut slot) = preview.try_lock() {
 					slot.take();
 				}
-			} else {
+			} else if now >= next_preview {
+				// The local tile is a check that the right thing is shared, not the stream.
+				// Copying every captured picture for it took half of a 240 fps frame.
+				next_preview = now + PREVIEW_INTERVAL;
 				let image = preview_frame(frame)?;
 				if let Ok(mut slot) = preview.try_lock() {
 					*slot = Some(image);

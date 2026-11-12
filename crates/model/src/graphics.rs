@@ -97,6 +97,31 @@ impl GraphicsApi {
 	}
 }
 
+/// The screen-share picture a person last chose, remembered on this device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct ScreenShareQuality {
+	/// Wanted frames per second. A source that cannot reach it shares at the nearest lower
+	/// rate without changing this choice.
+	pub fps: u32,
+	/// Wanted picture height: `None` follows the platform default and `Some(0)` is the
+	/// source's own size.
+	pub height: Option<u32>,
+}
+impl Default for ScreenShareQuality {
+	fn default() -> Self {
+		Self {
+			fps: 30,
+			height: None,
+		}
+	}
+}
+impl ScreenShareQuality {
+	pub fn is_valid(self) -> bool {
+		(1..=240).contains(&self.fps) && self.height.is_none_or(|height| height <= 2160)
+	}
+}
+
 /// Most frames per second Oxide draws for pointer motion, scrolling and animations. Immediate
 /// mode redraws the whole window each frame, so a 240 or 360 Hz display otherwise multiplies
 /// CPU and GPU use for no visible gain in a chat client. Unknown keys from newer builds use 60.

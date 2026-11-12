@@ -64,6 +64,7 @@ impl Settings {
 			graphics_api: ui.graphics_api,
 			steady_refresh_rate: ui.steady_refresh_rate,
 			frame_rate_limit: ui.frame_rate_limit,
+			screen_share: ui.screen.quality,
 			primary_color: ui.primary_color,
 			transparency_blur: ui.transparency_blur,
 			transparency: ui.transparency,
@@ -121,6 +122,7 @@ impl Settings {
 		ui.graphics_api = value.graphics_api;
 		ui.steady_refresh_rate = value.steady_refresh_rate;
 		ui.frame_rate_limit = value.frame_rate_limit;
+		ui.screen.quality = value.screen_share;
 		ui.primary_color = value.primary_color;
 		ui.transparency_blur = value.transparency_blur;
 		ui.transparency = value.transparency;

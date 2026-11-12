@@ -123,6 +123,7 @@ pub(crate) fn bgra_to_yuv420(
 				rows: &rows,
 				width,
 				first,
+				identity: source_width == width && source_height == height,
 				luma: band_luma,
 				chroma: band_chroma,
 			};
@@ -148,6 +149,8 @@ struct Band<'a> {
 	rows: &'a Axis,
 	width: usize,
 	first: usize,
+	/// Source and destination are the same size, so no pixel is scaled or letterboxed.
+	identity: bool,
 	luma: &'a mut [u8],
 	chroma: Out<'a>,
 }
@@ -155,6 +158,9 @@ struct Band<'a> {
 impl Band<'_> {
 	fn run(mut self) {
 		let width = self.width;
+		if self.identity {
+			return self.run_unscaled();
+		}
 		let mut top = vec![[0u32; 3]; width];
 		let mut bottom = vec![[0u32; 3]; width];
 		for pair in 0..self.luma.len() / width / 2 {
@@ -173,6 +179,51 @@ impl Band<'_> {
 				let mut sum = [0u32; 3];
 				for rgb in [top[2 * x], top[2 * x + 1], bottom[2 * x], bottom[2 * x + 1]] {
 					for (total, channel) in sum.iter_mut().zip(rgb) {
+						*total += channel;
+					}
+				}
+				let (u, v) = chroma(sum.map(|total| (total + 2) / 4));
+				match &mut self.chroma {
+					Out::Interleaved(uv) => {
+						uv[2 * (chroma_row + x)] = u;
+						uv[2 * (chroma_row + x) + 1] = v;
+					}
+					Out::Planar(plane_u, plane_v) => {
+						plane_u[chroma_row + x] = u;
+						plane_v[chroma_row + x] = v;
+					}
+				}
+			}
+		}
+	}
+
+	/// A share at the source's own size, the common case: every destination pixel is one
+	/// whole source pixel, so rows convert straight from the captured bytes with no blending
+	/// and no intermediate picture. The arithmetic matches `run` byte for byte.
+	fn run_unscaled(&mut self) {
+		let width = self.width;
+		let line = |row: usize| {
+			let start = self.rows.taps[row].near;
+			self.source[start..start + width * 4].as_chunks::<4>().0
+		};
+		let rgb = |pixel: &[u8; 4]| [pixel[2].into(), pixel[1].into(), pixel[0].into()];
+		for pair in 0..self.luma.len() / width / 2 {
+			let row = self.first + pair * 2;
+			let (top, bottom) = (line(row), line(row + 1));
+			let (luma_top, luma_bottom) =
+				self.luma[pair * 2 * width..(pair * 2 + 2) * width].split_at_mut(width);
+			for (out, pixel) in luma_top.iter_mut().zip(top) {
+				*out = luma(rgb(pixel));
+			}
+			for (out, pixel) in luma_bottom.iter_mut().zip(bottom) {
+				*out = luma(rgb(pixel));
+			}
+			let chroma_row = pair * width / 2;
+			let quads = top.as_chunks::<2>().0.iter().zip(bottom.as_chunks::<2>().0);
+			for (x, (upper, lower)) in quads.enumerate() {
+				let mut sum = [0u32; 3];
+				for pixel in [&upper[0], &upper[1], &lower[0], &lower[1]] {
+					for (total, channel) in sum.iter_mut().zip(rgb(pixel)) {
 						*total += channel;
 					}
 				}
@@ -303,11 +354,46 @@ mod tests {
 				rows: &rows,
 				width,
 				first: 0,
+				identity: false,
 				luma,
 				chroma: Out::Interleaved(uv),
 			}
 			.run();
 			assert!(banded == single);
+		}
+
+		// A share at the source's own size takes the direct path; it must produce exactly
+		// what the blending path does with whole-pixel taps, in both chroma layouts.
+		for chroma in [Chroma::Interleaved, Chroma::Planar] {
+			let (width, height) = (66, 38);
+			let mut frame = solid(66, 38, 66 * 4 + 20, [0; 4]);
+			for (index, byte) in frame.data.iter_mut().enumerate() {
+				*byte = (index * 37 % 253) as u8;
+			}
+			let mut direct = vec![0; width * height * 3 / 2];
+			bgra_to_yuv420(&frame, width, height, chroma, &mut direct).unwrap();
+			let columns = Axis::new(width, width, width, 4);
+			let rows = Axis::new(height, height, height, frame.stride);
+			let mut blended = vec![0; width * height * 3 / 2];
+			let (luma, planes) = blended.split_at_mut(width * height);
+			Band {
+				source: &frame.data,
+				columns: &columns,
+				rows: &rows,
+				width,
+				first: 0,
+				identity: false,
+				luma,
+				chroma: match chroma {
+					Chroma::Interleaved => Out::Interleaved(planes),
+					Chroma::Planar => {
+						let (u, v) = planes.split_at_mut(width * height / 4);
+						Out::Planar(u, v)
+					}
+				},
+			}
+			.run();
+			assert!(direct == blended);
 		}
 	}
 }

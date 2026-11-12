@@ -61,7 +61,15 @@ pub(crate) struct Encoder {
 	provides_samples: bool,
 	max_bytes: usize,
 	max_buffer_bytes: usize,
+	nap: crate::timer::ShortSleep,
+	/// Input pictures, reused in turn. A fresh multi-megabyte buffer per frame costs a page
+	/// fault for every page it touches, which at 240 fps is a real share of each frame. An
+	/// encoder with no B-frames is done with a picture once it has returned that frame, long
+	/// before the ring comes back round to it.
+	inputs: [Option<IMFMediaBuffer>; INPUT_RING],
 }
+
+const INPUT_RING: usize = 4;
 
 struct Activated(IMFActivate);
 
@@ -75,12 +83,24 @@ impl Drop for Activated {
 }
 
 impl Encoder {
+	/// The first hardware encoder that accepts this picture. Windows lists one per graphics
+	/// adapter, and the first is often an adapter that cannot encode (an unused integrated
+	/// GPU, for example), so each is tried before the caller falls back to software.
 	pub(crate) fn new(config: Config) -> Result<Self, &'static str> {
+		let _enumeration = Runtime::open()?;
+		// SAFETY: Media Foundation is started on this worker for the enumeration.
+		let encoders = unsafe { hardware_encoders()? };
+		// Rejected activations are released here, before Media Foundation shuts down.
+		let encoder = encoders
+			.into_iter()
+			.find_map(|activate| Self::open(activate, config).ok());
+		encoder.ok_or(UNAVAILABLE)
+	}
+
+	fn open(activate: Activated, config: Config) -> Result<Self, &'static str> {
 		let runtime = Runtime::open()?;
-		// SAFETY: Media Foundation owns returned COM objects; the activation array is cleared
-		// before its CoTaskMem allocation is released.
+		// SAFETY: Media Foundation owns returned COM objects, used only on this worker.
 		unsafe {
-			let activate = Activated(hardware_encoder()?);
 			let transform: IMFTransform = activate.0.ActivateObject().map_err(|_| UNAVAILABLE)?;
 			let attributes = transform.GetAttributes().map_err(|_| UNAVAILABLE)?;
 			if attributes.GetUINT32(&MF_TRANSFORM_ASYNC).unwrap_or(0) == 0 {
@@ -105,6 +125,14 @@ impl Encoder {
 				&VARIANT::from(0_u32),
 			);
 			let _ = codec.SetValue(&CODECAPI_AVEncMPVGOPSize, &VARIANT::from(config.fps * 2));
+			// Above 1080p at 240 fps the default preset cannot return a frame inside one frame
+			// interval (measured: 3.4 ms of the 4.2 ms at 1440p, before conversion). The fastest
+			// preset can, at some cost in compression; slower shares keep the default.
+			if u64::from(config.width) * u64::from(config.height) * u64::from(config.fps)
+				> 1920 * 1080 * 240
+			{
+				let _ = codec.SetValue(&CODECAPI_AVEncCommonQualityVsSpeed, &VARIANT::from(0_u32));
+			}
 
 			let output = video_type(config, MFVideoFormat_H264)?;
 			output
@@ -167,6 +195,8 @@ impl Encoder {
 				need_input: 0,
 				have_output: 0,
 				provides_samples,
+				nap: crate::timer::ShortSleep::new(),
+				inputs: Default::default(),
 			})
 		}
 	}
@@ -219,7 +249,14 @@ impl Encoder {
 		// SAFETY: The allocation is exactly the validated NV12 size; Lock is balanced by Unlock.
 		unsafe {
 			let native_length = u32::try_from(length).map_err(|_| FAILED)?;
-			let buffer = MFCreateMemoryBuffer(native_length).map_err(|_| FAILED)?;
+			let slot = &mut self.inputs[self.frame as usize % INPUT_RING];
+			let reusable = slot
+				.as_ref()
+				.is_some_and(|buffer| buffer.GetMaxLength().is_ok_and(|max| max >= native_length));
+			if !reusable {
+				*slot = Some(MFCreateMemoryBuffer(native_length).map_err(|_| FAILED)?);
+			}
+			let buffer = slot.clone().ok_or(FAILED)?;
 			let mut data = std::ptr::null_mut();
 			let mut capacity = 0;
 			buffer
@@ -286,7 +323,9 @@ impl Encoder {
 					if Instant::now() >= deadline {
 						return Err(FAILED);
 					}
-					std::thread::sleep(Duration::from_millis(1));
+					// The encoder answers in a millisecond or two; a whole-millisecond poll
+					// would add up to a quarter of a 240 fps frame to each one.
+					self.nap.sleep(Duration::from_micros(200));
 				}
 				Err(_) => return Err(FAILED),
 			}
@@ -353,7 +392,8 @@ impl Drop for Encoder {
 	}
 }
 
-unsafe fn hardware_encoder() -> Result<IMFActivate, &'static str> {
+/// Every hardware H.264 encoder Windows offers, in its preferred order.
+unsafe fn hardware_encoders() -> Result<Vec<Activated>, &'static str> {
 	unsafe {
 		let input = MFT_REGISTER_TYPE_INFO {
 			guidMajorType: MFMediaType_Video,
@@ -381,13 +421,14 @@ unsafe fn hardware_encoder() -> Result<IMFActivate, &'static str> {
 			CoTaskMemFree(Some(entries.cast()));
 			return Err(UNAVAILABLE);
 		}
-		let entries_slice = std::slice::from_raw_parts_mut(entries, count as usize);
-		let selected = entries_slice.first_mut().and_then(Option::take);
-		for entry in entries_slice {
-			*entry = None;
-		}
+		// The activation array is emptied before its CoTaskMem allocation is released.
+		let encoders = std::slice::from_raw_parts_mut(entries, count as usize)
+			.iter_mut()
+			.filter_map(Option::take)
+			.map(Activated)
+			.collect();
 		CoTaskMemFree(Some(entries.cast()));
-		selected.ok_or(UNAVAILABLE)
+		Ok(encoders)
 	}
 }
 

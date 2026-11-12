@@ -89,6 +89,74 @@ impl Drop for Resolution {
 	}
 }
 
+/// A wait shorter than the 1 ms timer step, for polls that sit inside every video frame: at
+/// 240 fps a frame lasts 4.2 ms, so each whole-millisecond sleep costs a quarter of it.
+pub(crate) struct ShortSleep {
+	#[cfg(target_os = "windows")]
+	timer: Option<windows::Win32::Foundation::HANDLE>,
+}
+
+impl ShortSleep {
+	#[allow(unsafe_code)]
+	pub(crate) fn new() -> Self {
+		#[cfg(target_os = "windows")]
+		{
+			use windows::Win32::System::Threading::{
+				CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, CreateWaitableTimerExW, TIMER_ALL_ACCESS,
+			};
+			// SAFETY: An unnamed timer owned by this value and closed in Drop. Windows before
+			// 10 1803 rejects the high-resolution flag, which keeps the 1 ms fallback.
+			let timer = unsafe {
+				CreateWaitableTimerExW(
+					None,
+					windows::core::PCWSTR::null(),
+					CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+					TIMER_ALL_ACCESS.0,
+				)
+			}
+			.ok();
+			Self { timer }
+		}
+		#[cfg(not(target_os = "windows"))]
+		Self {}
+	}
+
+	/// Sleeps about `duration`, or 1 ms where the system has no finer timer.
+	#[allow(unsafe_code)]
+	pub(crate) fn sleep(&self, duration: std::time::Duration) {
+		#[cfg(target_os = "windows")]
+		if let Some(timer) = self.timer {
+			use windows::Win32::System::Threading::{SetWaitableTimer, WaitForSingleObject};
+			// Negative means relative, in 100 ns units.
+			let due = -i64::try_from(duration.as_nanos() / 100)
+				.unwrap_or(10_000)
+				.max(1);
+			// SAFETY: The handle is this value's own live timer. The wait is bounded so a
+			// timer that never fires cannot hold the media worker.
+			unsafe {
+				if SetWaitableTimer(timer, &raw const due, 0, None, None, false).is_ok() {
+					WaitForSingleObject(timer, 50);
+					return;
+				}
+			}
+		}
+		std::thread::sleep(duration.max(std::time::Duration::from_millis(1)));
+	}
+}
+
+impl Drop for ShortSleep {
+	fn drop(&mut self) {
+		#[cfg(target_os = "windows")]
+		if let Some(timer) = self.timer.take() {
+			#[allow(unsafe_code)]
+			// SAFETY: Closes the timer created in `new`, once.
+			unsafe {
+				let _ = windows::Win32::Foundation::CloseHandle(timer);
+			}
+		}
+	}
+}
+
 /// Run one media loop on its own thread and single-threaded runtime, so gateway, image and
 /// UI tasks on the shared application runtime cannot delay audio ticks or paced video.
 /// Dropping the returned future (a task abort) stops the loop at its next await.

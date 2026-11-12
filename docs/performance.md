@@ -1888,3 +1888,28 @@ Native computer use exposed no applications in this session. Native before/after
 screenshots, UI workload warmup/sampling, CPU/RSS, display scale/renderer observation,
 frame latency and live Discord verification remain unavailable. No UI speed or
 memory improvement is established by these package sizes.
+
+## High-frame-rate screen share on Windows — November 12, 2026
+
+Synthetic measurement on one Windows 11 machine with an NVIDIA encoder, an AMD
+adapter listed ahead of it, and a live call running at the same time: 480 changing
+pictures pushed through the share's own conversion and encoder code in a release test
+build, with no capture, transport or Discord involved. Times are per frame; a 240 fps
+share allows 4.17 ms.
+
+| Step | 1440p before | 1440p after | 1080p before | 1080p after |
+| --- | ---: | ---: | ---: | ---: |
+| Encoder used | OpenH264 (software) | hardware | OpenH264 (software) | hardware |
+| Convert and encode | 14.61 ms | 3.69 ms | 6.69 ms | 2.73 ms |
+| of which colour conversion | 2.44 ms | 0.93 ms | 1.45 ms | 0.58 ms |
+| Local preview copy, while visible | 2.03 ms every frame | 2.02 ms, 30 times a second | 1.15 ms every frame | 1.15 ms, 30 times a second |
+
+The software fallback was a defect, not a choice: Windows lists one hardware H.264
+encoder per graphics adapter, only the first was tried, and that adapter could not
+start one. With the hardware encoder but none of the other changes, 1440p took 6.07 ms.
+Above 1080p at 240 fps the encoder now runs its fastest preset (2.49 ms instead of
+3.41 ms per 1440p picture), which trades some compression for speed.
+
+These numbers show the encode path fits inside a 240 fps frame on this machine. They do
+not measure capture, the network or what a viewer receives, and other graphics hardware
+will differ. No live Discord stream was measured.

@@ -619,6 +619,12 @@ keyframes use an unsigned `VT_UI4` value, as required by
 [`CODECAPI_AVEncVideoForceKeyFrame`](https://learn.microsoft.com/en-us/windows/win32/medfound/codecapi-avencvideoforcekeyframe).
 An encoder that rejects a differently typed control causes software fallback.
 
+Windows lists one hardware encoder per graphics adapter. Each is tried in the listed
+order until one accepts the picture size and frame rate, so an adapter that cannot
+encode (an unused integrated GPU, for example) no longer forces software encoding.
+Input pictures are written into a small ring of reused buffers, and above 1080p at
+240 fps the encoder is asked for its fastest preset.
+
 The MFT's [`cbSize`](https://learn.microsoft.com/en-us/windows/win32/api/mftransform/ns-mftransform-mft_output_stream_info)
 is its minimum output-buffer capacity, not the compressed sample length. Caller-owned
 output allocations may use up to the larger of one bounded 32-bit raw picture and
