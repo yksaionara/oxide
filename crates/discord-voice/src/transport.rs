@@ -146,6 +146,42 @@ fn transient_receive(error: &std::io::Error) -> bool {
 			| std::io::ErrorKind::Interrupted
 	) || (cfg!(windows) && error.raw_os_error() == Some(WSAEMSGSIZE))
 }
+const VOICE_DISCOVERY: [&str; 3] = [
+	"Could not bind voice UDP socket",
+	"Could not connect voice UDP socket",
+	"Voice UDP discovery failed",
+];
+const STREAM_DISCOVERY: [&str; 3] = [
+	"Could not bind stream UDP socket",
+	"Could not connect stream UDP socket",
+	"Stream UDP discovery failed",
+];
+/// How long one discovery probe waits for its reply before another is sent.
+const DISCOVERY_RETRY: Duration = Duration::from_millis(if cfg!(test) { 150 } else { 2000 });
+/// A new socket to the media server with its discovery probe sent. Datagrams are lossy, and
+/// some networks drop the first packets of a flow, so one lost probe or reply must not end
+/// the call. Every attempt uses a new socket: a network that inspects the start of a flow
+/// sees the unblock decoys first each time, and a late reply to an abandoned attempt has
+/// nowhere to arrive.
+async fn discovery_socket(
+	server: SocketAddr,
+	ssrc: u32,
+	[bind, connect, send]: [&'static str; 3],
+) -> Result<UdpSocket, &'static str> {
+	let local = if server.is_ipv4() {
+		"0.0.0.0:0"
+	} else {
+		"[::]:0"
+	};
+	let socket = UdpSocket::bind(local).await.map_err(|_| bind)?;
+	socket.connect(server).await.map_err(|_| connect)?;
+	crate::unblock::before_discovery(&socket).await;
+	let mut probe = [0; 74];
+	probe[..4].copy_from_slice(&[0, 1, 0, 70]);
+	probe[4..8].copy_from_slice(&ssrc.to_be_bytes());
+	socket.send(&probe).await.map_err(|_| send)?;
+	Ok(socket)
+}
 // Native voice UDP ping: signaling heartbeats alone do not maintain an idle
 // media path (notably a receive-only stream or a muted call).
 fn udp_keepalive(
@@ -425,6 +461,8 @@ async fn run_inner(
 	let mut udp_failures = UdpFailures::default();
 	let mut discovering = false;
 	let mut discovery_deadline = Instant::now();
+	let mut discovery_retry = Instant::now();
+	let mut udp_server: Option<SocketAddr> = None;
 	let mut ssrc = 0u32;
 	let mut video = crate::camera_video::Sender::default();
 	// Receiving cameras acknowledge what arrived, as watched streams do. Without reception
@@ -558,6 +596,11 @@ async fn run_inner(
 					   let now=Instant::now();
 					   if deadline.is_some_and(|d|now>=d) {return Err(negotiation_timeout(heartbeat_ms.is_some(),udp.is_some(),encryption.is_some(),&dave,resuming));}
 					   if discovering && now>=discovery_deadline {return Err("Discord voice UDP discovery timed out; check the network firewall");}
+					   // No reply yet: try again on a new socket. A failed retry keeps the last one waiting.
+					   if discovering && now>=discovery_retry && let Some(server)=udp_server {
+						   if let Ok(socket)=discovery_socket(server,ssrc,VOICE_DISCOVERY).await {udp=Some(socket);}
+						   discovery_retry=Instant::now()+DISCOVERY_RETRY;
+					   }
 					   if !discovering && now>=next_udp_ping && let Some(socket)=&udp {
 						   udp_keepalive(socket,&mut udp_failures,&mut udp_ping_sequence)?;
 						   next_udp_ping=now+Duration::from_secs(5);
@@ -780,10 +823,9 @@ async fn run_inner(
 									   if !public_ip(address) && !(cfg!(test) && local_test && address.is_loopback()){return Err("Voice server advertised a nonpublic address");}
 									   let port=u16::try_from(number(data,"port")?).ok().filter(|p|*p>0).ok_or("Invalid voice server port")?;
 									   if !data["modes"].as_array().is_some_and(|m|m.iter().any(|m|m.as_str()==Some(MODE))){return Err("Required voice transport encryption is unavailable");}
-									   let socket=UdpSocket::bind(if address.is_ipv4(){"0.0.0.0:0"}else{"[::]:0"}).await.map_err(|_|"Could not bind voice UDP socket")?;
-									   socket.connect(SocketAddr::new(address,port)).await.map_err(|_|"Could not connect voice UDP socket")?;
-									   crate::unblock::before_discovery(&socket).await;let mut probe=[0;74];probe[..4].copy_from_slice(&[0,1,0,70]);probe[4..8].copy_from_slice(&ssrc.to_be_bytes());socket.send(&probe).await.map_err(|_|"Voice UDP discovery failed")?;
-									   udp=Some(socket);discovering=true;discovery_deadline=Instant::now()+Duration::from_secs(8);
+									   let server=SocketAddr::new(address,port);
+									   udp=Some(discovery_socket(server,ssrc,VOICE_DISCOVERY).await?);udp_server=Some(server);
+									   discovering=true;discovery_deadline=Instant::now()+Duration::from_secs(8);discovery_retry=Instant::now()+DISCOVERY_RETRY;
 									   emit(Status::Discovering).map_err(|_|"Call interface closed")?;
 								   },
 								   4=>{
@@ -1425,6 +1467,8 @@ async fn run_stream_inner(
 	let mut udp_failures = UdpFailures::default();
 	let mut discovering = false;
 	let mut discovery_deadline = Instant::now();
+	let mut discovery_retry = Instant::now();
+	let mut udp_server: Option<SocketAddr> = None;
 	let mut audio_ssrc = 0u32;
 	let mut video_ssrc = 0u32;
 	let mut rtx_ssrc = 0u32;
@@ -1592,6 +1636,11 @@ async fn run_stream_inner(
 				history.expire(now);
 				if deadline.is_some_and(|at| now>=at) {return Err(if resuming {"Discord stream resume was not acknowledged"} else {negotiation_timeout(heartbeat_ms.is_some(),udp.is_some(),encryption.is_some(),&dave,false)});}
 				if discovering && now>=discovery_deadline {return Err("Discord stream UDP discovery timed out");}
+				// No reply yet: try again on a new socket. A failed retry keeps the last one waiting.
+				if discovering && now>=discovery_retry && let Some(server)=udp_server {
+					if let Ok(socket)=discovery_socket(server,audio_ssrc,STREAM_DISCOVERY).await {udp=Some(socket);}
+					discovery_retry=Instant::now()+DISCOVERY_RETRY;
+				}
 				if !discovering && now>=next_udp_ping && let Some(socket)=&udp {
 					udp_keepalive(socket,&mut udp_failures,&mut udp_ping_sequence)?;
 					next_udp_ping=now+Duration::from_secs(5);
@@ -1864,10 +1913,9 @@ async fn run_stream_inner(
 								if !public_ip(address) && !(cfg!(test) && local_test && address.is_loopback()){return Err("Stream server advertised a nonpublic address");}
 								let port=u16::try_from(number(data,"port")?).ok().filter(|port|*port>0).ok_or("Invalid stream server port")?;
 								if !data["modes"].as_array().is_some_and(|m|m.iter().any(|mode|mode.as_str()==Some(MODE))){return Err("Required stream transport encryption is unavailable");}
-								let socket=UdpSocket::bind(if address.is_ipv4(){"0.0.0.0:0"}else{"[::]:0"}).await.map_err(|_|"Could not bind stream UDP socket")?;
-								socket.connect(SocketAddr::new(address,port)).await.map_err(|_|"Could not connect stream UDP socket")?;
-								crate::unblock::before_discovery(&socket).await;let mut probe=[0;74];probe[..4].copy_from_slice(&[0,1,0,70]);probe[4..8].copy_from_slice(&audio_ssrc.to_be_bytes());socket.send(&probe).await.map_err(|_|"Stream UDP discovery failed")?;
-								udp=Some(socket);discovering=true;discovery_deadline=Instant::now()+Duration::from_secs(8);emit(Status::Discovering).map_err(|_|"Stream interface closed")?;
+								let server=SocketAddr::new(address,port);
+								udp=Some(discovery_socket(server,audio_ssrc,STREAM_DISCOVERY).await?);udp_server=Some(server);
+								discovering=true;discovery_deadline=Instant::now()+Duration::from_secs(8);discovery_retry=Instant::now()+DISCOVERY_RETRY;emit(Status::Discovering).map_err(|_|"Stream interface closed")?;
 							},
 							4=>{
 								if encryption.is_some()||udp.is_none()||discovering{return Err("Unexpected stream session description");}
@@ -2901,8 +2949,13 @@ mod tests {
 				break;
 			}
 			let mut probe = [0; 4096];
+			// The first probe goes unanswered, as on a network that drops the start of a flow:
+			// Oxide tries again from a new socket, with the unblock decoys ahead of the probe.
+			let (n, lost) = crate::unblock::expect_decoys_then_discovery(&udp, &mut probe).await;
+			assert_eq!(n, 74);
 			let (n, client) = crate::unblock::expect_decoys_then_discovery(&udp, &mut probe).await;
 			assert_eq!(n, 74);
+			assert_ne!(lost.port(), client.port());
 			probe[..4].copy_from_slice(&[0, 2, 0, 70]);
 			probe[8..17].copy_from_slice(b"127.0.0.1");
 			probe[72..74].copy_from_slice(&client.port().to_be_bytes());
